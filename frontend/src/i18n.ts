@@ -8,17 +8,30 @@ const storageKey = 'fleet-control-language'
 const saved = localStorage.getItem(storageKey)
 const language = supportedLanguages.includes(saved as SupportedLanguage) ? saved! : 'en'
 
-// Import this module once from main.tsx before rendering components that call useTranslation.
-void i18n.use(initReactI18next).init({
-  lng: language,
-  fallbackLng: 'en',
-  interpolation: { escapeValue: false },
-  resources: {
-    en: { translation: { app: { name: 'Fleet Control Center', version: 'Frontend foundation v0.9.0' }, actions: { import: 'Import vessel', retry: 'Retry connection' }, languages: { label: 'Language', en: 'English', fr: 'French' }, status: { label: 'API status', checking: 'Checking backend', connected: 'Backend connected', degraded: 'Backend degraded', unavailable: 'Backend unavailable', database: 'Database', cache: 'Telemetry cache', connectedValue: 'connected', unavailableValue: 'unavailable', initialized: 'initialized', notInitialized: 'not initialized' }, dashboard: { eyebrow: 'Operations workspace', title: 'Fleet view is ready for data controls.', description: 'Connect to the backend, then select vessels, telemetry, and replay controls in the next dashboard milestones.', mapTitle: 'Map workspace', mapDescription: 'Geographic trajectory rendering arrives in v0.11.0.', panelTitle: 'Control surface', panelDescription: 'Vessel, date range, metric, and playback controls arrive in v0.10.0.', emptyTitle: 'No vessel selected', emptyDescription: 'Import a vessel to begin building the fleet view.' }, errors: { title: 'The application could not be displayed.', description: 'Refresh the page to try again.' } } },
-    fr: { translation: { app: { name: 'Centre de controle de flotte', version: 'Fondation front-end v0.9.0' }, actions: { import: 'Importer un navire', retry: 'Reessayer la connexion' }, languages: { label: 'Langue', en: 'Anglais', fr: 'Francais' }, status: { label: "Etat de l'API", checking: 'Verification du serveur', connected: 'Serveur connecte', degraded: 'Serveur degrade', unavailable: 'Serveur indisponible', database: 'Base de donnees', cache: 'Cache de telemetrie', connectedValue: 'connectee', unavailableValue: 'indisponible', initialized: 'initialise', notInitialized: 'non initialise' }, dashboard: { eyebrow: 'Espace operations', title: 'La vue flotte est prete pour les controles de donnees.', description: 'Connectez le serveur, puis selectionnez les navires, la telemetrie et les controles de lecture dans les prochaines versions.', mapTitle: 'Espace carte', mapDescription: 'Le rendu des trajectoires geographiques arrive en v0.11.0.', panelTitle: 'Surface de controle', panelDescription: 'Les controles de navire, periode, metrique et lecture arrivent en v0.10.0.', emptyTitle: 'Aucun navire selectionne', emptyDescription: 'Importez un navire pour creer la vue de flotte.' }, errors: { title: "L'application ne peut pas etre affichee.", description: 'Actualisez la page pour reessayer.' } } },
-  },
-})
+const en = {
+  app: { name: 'Fleet Control Center', version: 'Fleet data controls v0.10.0' },
+  actions: { import: 'Import vessel', retry: 'Retry connection' },
+  languages: { label: 'Language', en: 'English', fr: 'French' },
+  status: { label: 'API status', checking: 'Checking backend', connected: 'Backend connected', degraded: 'Backend degraded', unavailable: 'Backend unavailable', database: 'Database', cache: 'Telemetry cache', connectedValue: 'connected', unavailableValue: 'unavailable', initialized: 'initialized', notInitialized: 'not initialized' },
+  controls: { title: 'Data controls', vessel: 'Vessel', metric: 'Metric', start: 'Start', end: 'End', loading: 'Loading vessels', noMetrics: 'No metrics available', invalidRange: 'End must not precede start.' },
+  dashboard: { eyebrow: 'Operations workspace', title: 'Inspect the fleet before plotting its course.', description: 'Select an imported vessel and metric to review available telemetry and its origin.', mapTitle: 'Map workspace', mapDescription: 'Geographic trajectory rendering arrives in v0.11.0.', panelTitle: 'Vessel details', emptyTitle: 'No vessels available', emptyDescription: 'Import a vessel to begin.', loading: 'Loading fleet data', range: 'Available range', samples: 'Samples', availableMetrics: 'Available metrics', metricDetails: 'Metric details', unit: 'Unit', origin: 'Origin', sourceColumn: 'Source column', formula: 'Formula', basedOn: 'Based on', warning: 'Warning', measured: 'Measured', estimated: 'Estimated' },
+  errors: { title: 'The application could not be displayed.', description: 'Refresh the page to try again.', fleet: 'Unable to load fleet data.', vessel: 'Unable to load vessel details.', retry: 'Retry' },
+  metrics: { sog: 'Speed Over Ground', estimated_rpm: 'RPM', estimated_fuel_tpd: 'Fuel consumption', roll: 'Roll', pitch: 'Pitch', yaw: 'Yaw' },
+}
 
+const fr = {
+  app: { name: 'Centre de controle de flotte', version: 'Controles de donnees v0.10.0' },
+  actions: { import: 'Importer un navire', retry: 'Reessayer la connexion' },
+  languages: { label: 'Langue', en: 'Anglais', fr: 'Francais' },
+  status: { label: "Etat de l'API", checking: 'Verification du serveur', connected: 'Serveur connecte', degraded: 'Serveur degrade', unavailable: 'Serveur indisponible', database: 'Base de donnees', cache: 'Cache de telemetrie', connectedValue: 'connectee', unavailableValue: 'indisponible', initialized: 'initialise', notInitialized: 'non initialise' },
+  controls: { title: 'Controles des donnees', vessel: 'Navire', metric: 'Metrique', start: 'Debut', end: 'Fin', loading: 'Chargement des navires', noMetrics: 'Aucune metrique disponible', invalidRange: 'La fin doit suivre le debut.' },
+  dashboard: { eyebrow: 'Espace operations', title: 'Inspectez la flotte avant de tracer sa route.', description: 'Selectionnez un navire importe et une metrique pour consulter la telemetrie et son origine.', mapTitle: 'Espace carte', mapDescription: 'Le rendu des trajectoires geographiques arrive en v0.11.0.', panelTitle: 'Details du navire', emptyTitle: 'Aucun navire disponible', emptyDescription: 'Importez un navire pour commencer.', loading: 'Chargement des donnees de flotte', range: 'Periode disponible', samples: 'Echantillons', availableMetrics: 'Metriques disponibles', metricDetails: 'Details de la metrique', unit: 'Unite', origin: 'Origine', sourceColumn: 'Colonne source', formula: 'Formule', basedOn: 'Basee sur', warning: 'Avertissement', measured: 'Mesuree', estimated: 'Estimee' },
+  errors: { title: "L'application ne peut pas etre affichee.", description: 'Actualisez la page pour reessayer.', fleet: 'Impossible de charger les donnees de flotte.', vessel: 'Impossible de charger les details du navire.', retry: 'Reessayer' },
+  metrics: { sog: 'Vitesse sur le fond', estimated_rpm: 'RPM', estimated_fuel_tpd: 'Consommation de carburant', roll: 'Roulis', pitch: 'Tangage', yaw: 'Lacet' },
+}
+
+// Import this module once from main.tsx before rendering components that call useTranslation.
+void i18n.use(initReactI18next).init({ lng: language, fallbackLng: 'en', interpolation: { escapeValue: false }, resources: { en: { translation: en }, fr: { translation: fr } } })
 // Keep the compact header choice available after a browser refresh.
 i18n.on('languageChanged', (nextLanguage) => localStorage.setItem(storageKey, nextLanguage))
 export default i18n

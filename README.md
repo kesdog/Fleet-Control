@@ -2,7 +2,7 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.9.0
+## Version 0.10.0
 
 This milestone provides the Python backend foundation plus deterministic CSV inspection:
 
@@ -22,6 +22,8 @@ This milestone provides the Python backend foundation plus deterministic CSV ins
 - Typed API health client, TanStack Query setup, and non-blocking API status display.
 - English/French UI switching persisted in localStorage.
 - Vite development proxy for the backend API and a desktop-first operations shell.
+- Vessel, metric, and available date-range controls backed by cache-read APIs.
+- Vessel metadata and measured/estimated metric details with backend-provided provenance.
 
 ## Run the frontend
 

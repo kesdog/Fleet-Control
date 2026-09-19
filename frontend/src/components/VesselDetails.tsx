@@ -1,0 +1,14 @@
+import type { Metric, Vessel } from '../api/client'
+import { useTranslation } from 'react-i18next'
+
+type VesselDetailsProps = { vessel?: Vessel; metric?: Metric; loading: boolean; error: boolean; onRetry: () => void }
+
+// Use this compact side panel for vessel metadata; values remain backend-owned rather than inferred in the UI.
+export function VesselDetails({ vessel, metric, loading, error, onRetry }: VesselDetailsProps) {
+  const { i18n, t } = useTranslation()
+  const formatTime = (value: string | null) => value ? new Intl.DateTimeFormat(i18n.language, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)) : '-'
+  if (loading) return <aside className="control-panel"><p className="loading-copy">{t('dashboard.loading')}</p></aside>
+  if (error) return <aside className="control-panel"><p className="error-copy">{t('errors.vessel')}</p><button className="text-button" type="button" onClick={onRetry}>{t('errors.retry')}</button></aside>
+  if (!vessel) return <aside className="control-panel"><div className="empty-state"><span className="empty-marker" aria-hidden="true" /><h3>{t('dashboard.emptyTitle')}</h3><p>{t('dashboard.emptyDescription')}</p></div></aside>
+  return <aside className="control-panel"><div className="panel-heading"><div><p className="eyebrow">02</p><h2>{t('dashboard.panelTitle')}</h2></div><span className="panel-status">{vessel.imo}</span></div><p className="vessel-name">{vessel.name ?? vessel.imo}</p><dl className="detail-list"><div><dt>{t('dashboard.range')}</dt><dd>{formatTime(vessel.start)} - {formatTime(vessel.end)}</dd></div><div><dt>{t('dashboard.samples')}</dt><dd>{vessel.sample_count.toLocaleString(i18n.language)}</dd></div><div><dt>{t('dashboard.availableMetrics')}</dt><dd>{vessel.available_metrics.length}</dd></div></dl>{metric ? <section className="metric-details"><div className="metric-heading"><h3>{t('dashboard.metricDetails')}</h3><span className={metric.origin === 'estimated' ? 'estimate-badge' : 'measured-badge'}>{t(`dashboard.${metric.origin}`)}</span></div><p className="selected-metric">{t(`metrics.${metric.key}`, { defaultValue: metric.label })}</p><dl className="detail-list"><div><dt>{t('dashboard.unit')}</dt><dd>{metric.unit}</dd></div><div><dt>{t('dashboard.origin')}</dt><dd>{t(`dashboard.${metric.origin}`)}</dd></div>{metric.source_column ? <div><dt>{t('dashboard.sourceColumn')}</dt><dd>{metric.source_column}</dd></div> : null}{metric.formula ? <div><dt>{t('dashboard.formula')}</dt><dd>{metric.formula}</dd></div> : null}{metric.based_on.length ? <div><dt>{t('dashboard.basedOn')}</dt><dd>{metric.based_on.join(', ')}</dd></div> : null}</dl>{metric.warning ? <p className="metric-warning"><strong>{t('dashboard.warning')}:</strong> {metric.warning}</p> : null}</section> : null}</aside>
+}
