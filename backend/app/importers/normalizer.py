@@ -17,6 +17,7 @@ class MetricDefinition:
     origin: str
     source_column: str | None
     formula: str | None = None
+    based_on: tuple[str, ...] | None = None
     warning: str | None = None
 
 
@@ -329,6 +330,7 @@ def _estimated_metric_definitions() -> dict[str, MetricDefinition]:
             origin="estimated",
             source_column=None,
             formula="4 × SOG",
+            based_on=("sog",),
             warning="Estimated from Speed Over Ground; not measured RPM.",
         ),
         "fuel_tpd": MetricDefinition(
@@ -338,6 +340,7 @@ def _estimated_metric_definitions() -> dict[str, MetricDefinition]:
             origin="estimated",
             source_column=None,
             formula="150 × (SOG / 15)^3",
+            based_on=("sog",),
             warning="Estimated from Speed Over Ground; not measured fuel consumption.",
         ),
     }

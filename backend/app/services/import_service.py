@@ -25,6 +25,7 @@ from app.schemas.imports import (
     UpdateMappingResponse,
     UploadedFileSummary,
 )
+from app.services.fleet_cache import FleetCacheManager
 
 
 async def create_import_session(
@@ -153,6 +154,7 @@ def commit_import_session(
     imports_directory: Path,
     session_id: str,
     request: CommitImportRequest,
+    fleet_cache: FleetCacheManager,
 ) -> CommitImportResponse:
     import_session = _get_active_session(session, session_id)
     if import_session.status != ImportStatus.VALIDATED.value:
@@ -215,6 +217,7 @@ def commit_import_session(
                     origin=metric.origin,
                     source_column=metric.source_column,
                     formula=metric.formula,
+                    based_on=list(metric.based_on) if metric.based_on is not None else None,
                     warning=metric.warning,
                 )
                 for metric in normalized.metric_definitions
@@ -225,6 +228,8 @@ def commit_import_session(
             raise RuntimeError("Import session disappeared during commit.")
         committed_session.status = ImportStatus.COMMITTED.value
 
+    # Cache replacement happens strictly after SQLite commits, so failed writes cannot affect reads.
+    fleet_cache.refresh_vessel(session, request.imo)
     return CommitImportResponse(
         session_id=session_id,
         status=ImportStatus.COMMITTED,

@@ -14,6 +14,7 @@ from app.schemas.imports import (
     UpdateMappingRequest,
     UpdateMappingResponse,
 )
+from app.services.fleet_cache import FleetCacheManager
 from app.services.import_service import (
     cancel_import_session,
     commit_import_session,
@@ -35,6 +36,10 @@ def get_database_session(request: Request) -> Iterator[Session]:
 def get_runtime_settings(request: Request) -> Settings:
     # Read settings from app state so test applications can use isolated directories.
     return cast(Settings, request.app.state.settings)
+
+
+def get_fleet_cache(request: Request) -> FleetCacheManager:
+    return cast(FleetCacheManager, request.app.state.fleet_cache)
 
 
 @router.post("", response_model=StartImportResponse, status_code=status.HTTP_201_CREATED)
@@ -80,8 +85,11 @@ def commit_import(
     payload: CommitImportRequest,
     session: Annotated[Session, Depends(get_database_session)],
     settings: Annotated[Settings, Depends(get_runtime_settings)],
+    fleet_cache: Annotated[FleetCacheManager, Depends(get_fleet_cache)],
 ) -> CommitImportResponse:
-    return commit_import_session(session, settings.imports_directory, session_id, payload)
+    return commit_import_session(
+        session, settings.imports_directory, session_id, payload, fleet_cache
+    )
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

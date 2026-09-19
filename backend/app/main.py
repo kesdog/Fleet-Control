@@ -7,6 +7,7 @@ from app.api.health import router as health_router
 from app.api.imports import router as imports_router
 from app.config import get_settings
 from app.db.connection import create_database_engine, create_session_factory, initialize_database
+from app.services.fleet_cache import FleetCacheManager
 
 
 @asynccontextmanager
@@ -15,6 +16,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     initialize_database(engine)
     app.state.engine = engine
     app.state.session_factory = create_session_factory(engine)
+    app.state.fleet_cache = FleetCacheManager()
+    app.state.fleet_cache.hydrate(app.state.session_factory)
     yield
     engine.dispose()
 
@@ -22,7 +25,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Marine Fleet Control Center",
-        version="0.4.0",
+        version="0.5.0",
         lifespan=lifespan,
     )
     app.state.settings = get_settings()

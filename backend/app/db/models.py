@@ -62,6 +62,7 @@ class VesselMetric(Base):
     origin: Mapped[str] = mapped_column(String(32))
     source_column: Mapped[str | None] = mapped_column(String(255))
     formula: Mapped[str | None] = mapped_column(Text)
+    based_on: Mapped[list[str] | None] = mapped_column(JSON)
     warning: Mapped[str | None] = mapped_column(Text)
 
 

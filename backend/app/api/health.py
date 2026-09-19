@@ -18,5 +18,5 @@ def health(request: Request) -> HealthResponse:
     return HealthResponse(
         status="ok" if database_connected else "degraded",
         database="connected" if database_connected else "unavailable",
-        cache="not_initialized",
+        cache="initialized" if hasattr(request.app.state, "fleet_cache") else "not_initialized",
     )

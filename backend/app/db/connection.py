@@ -1,6 +1,6 @@
 from collections.abc import Iterator
 
-from sqlalchemy import Engine, create_engine, text
+from sqlalchemy import Engine, create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
@@ -24,6 +24,11 @@ def create_session_factory(engine: Engine) -> sessionmaker[Session]:
 
 def initialize_database(engine: Engine) -> None:
     Base.metadata.create_all(bind=engine)
+    # v0.5 adds estimate dependencies without requiring a full migration framework yet.
+    metric_columns = {column["name"] for column in inspect(engine).get_columns("vessel_metrics")}
+    if "based_on" not in metric_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE vessel_metrics ADD COLUMN based_on JSON"))
 
 
 def check_database_connection(engine: Engine) -> bool:

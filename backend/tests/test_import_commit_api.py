@@ -63,6 +63,7 @@ def test_validated_import_commits_normalized_timestamp_joined_data(client: TestC
         rpm = next(metric for metric in metrics if metric.key == "rpm")
         assert rpm.origin == "estimated"
         assert rpm.formula == "4 × SOG"
+        assert rpm.based_on == ["sog"]
 
 
 def test_existing_vessel_requires_explicit_replace(client: TestClient) -> None:

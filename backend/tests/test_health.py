@@ -18,5 +18,5 @@ def test_health_endpoint_reports_database_status(client: TestClient) -> None:
     assert response.json() == {
         "status": "ok",
         "database": "connected",
-        "cache": "not_initialized",
+        "cache": "initialized",
     }
