@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Marine Fleet Control Center",
-        version="0.3.0",
+        version="0.4.0",
         lifespan=lifespan,
     )
     app.state.settings = get_settings()

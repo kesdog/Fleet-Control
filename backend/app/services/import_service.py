@@ -5,15 +5,21 @@ from shutil import rmtree
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.db.models import ImportSession
+from app.db.models import ImportSession, Sample, Vessel, VesselMetric
 from app.importers.csv_reader import CsvInspection, CsvReadError, inspect_csv
+from app.importers.normalizer import NormalizedImport, normalize_import
 from app.schemas.imports import (
     ColumnPreview,
+    CommitImportRequest,
+    CommitImportResponse,
+    FileMapping,
     FilePreview,
     ImportPreviewResponse,
     ImportStatus,
+    ImportValidationResponse,
     StartImportResponse,
     UpdateMappingRequest,
     UpdateMappingResponse,
@@ -128,6 +134,105 @@ def update_mapping(
     )
 
 
+def validate_import_session(
+    session: Session, imports_directory: Path, session_id: str
+) -> ImportValidationResponse:
+    import_session = _get_active_session(session, session_id)
+    normalized = _normalize_session(import_session, imports_directory)
+    response = _validation_response(session_id, normalized)
+    import_session.validation_result = response.model_dump(mode="json")
+    import_session.status = (
+        ImportStatus.VALIDATED.value if not normalized.errors else ImportStatus.FAILED.value
+    )
+    session.commit()
+    return response
+
+
+def commit_import_session(
+    session: Session,
+    imports_directory: Path,
+    session_id: str,
+    request: CommitImportRequest,
+) -> CommitImportResponse:
+    import_session = _get_active_session(session, session_id)
+    if import_session.status != ImportStatus.VALIDATED.value:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Import session must pass validation before commit.",
+        )
+    normalized = _normalize_session(import_session, imports_directory)
+    if normalized.errors:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=list(normalized.errors),
+        )
+
+    # End the read transaction before opening the explicit all-or-nothing write transaction.
+    session.commit()
+    with session.begin():
+        existing_vessel = session.scalar(select(Vessel).where(Vessel.imo == request.imo))
+        if existing_vessel is not None and request.mode.value == "CREATE":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Vessel {request.imo} already exists; use REPLACE to overwrite it.",
+            )
+        if existing_vessel is not None:
+            # Remove dependent records first so replacement works with SQLite foreign keys enabled.
+            session.execute(delete(Sample).where(Sample.vessel_id == existing_vessel.id))
+            session.execute(
+                delete(VesselMetric).where(VesselMetric.vessel_id == existing_vessel.id)
+            )
+            session.delete(existing_vessel)
+            session.flush()
+
+        vessel = Vessel(imo=request.imo, name=request.name)
+        session.add(vessel)
+        session.flush()
+        session.add_all(
+            [
+                Sample(
+                    vessel_id=vessel.id,
+                    timestamp=sample.timestamp,
+                    latitude_deg=sample.latitude_deg,
+                    longitude_deg=sample.longitude_deg,
+                    sog_knots=sample.sog_knots,
+                    course_deg=sample.course_deg,
+                    heading_deg=sample.heading_deg,
+                    estimated_rpm=sample.estimated_rpm,
+                    estimated_fuel_tpd=sample.estimated_fuel_tpd,
+                    metrics_json=sample.metrics or None,
+                )
+                for sample in normalized.samples
+            ]
+        )
+        session.add_all(
+            [
+                VesselMetric(
+                    vessel_id=vessel.id,
+                    key=metric.key,
+                    display_name=metric.display_name,
+                    unit=metric.unit,
+                    origin=metric.origin,
+                    source_column=metric.source_column,
+                    formula=metric.formula,
+                    warning=metric.warning,
+                )
+                for metric in normalized.metric_definitions
+            ]
+        )
+        committed_session = session.get(ImportSession, session_id)
+        if committed_session is None:
+            raise RuntimeError("Import session disappeared during commit.")
+        committed_session.status = ImportStatus.COMMITTED.value
+
+    return CommitImportResponse(
+        session_id=session_id,
+        status=ImportStatus.COMMITTED,
+        imo=request.imo,
+        samples_imported=len(normalized.samples),
+    )
+
+
 def cancel_import_session(session: Session, imports_directory: Path, session_id: str) -> None:
     import_session = _get_active_session(session, session_id)
     session.delete(import_session)
@@ -148,6 +253,32 @@ def _get_active_session(session: Session, session_id: str) -> ImportSession:
 def _source_files(import_session: ImportSession) -> list[dict[str, str]]:
     source_files = import_session.source_files or {"files": []}
     return list(source_files["files"])
+
+
+def _normalize_session(import_session: ImportSession, imports_directory: Path) -> NormalizedImport:
+    raw_mappings = (import_session.detected_mapping or {"files": {}}).get("files", {})
+    mappings = {
+        filename: FileMapping.model_validate(mapping)
+        for filename, mapping in raw_mappings.items()
+    }
+    files = [
+        (file["filename"], imports_directory / import_session.id / file["stored_name"])
+        for file in _source_files(import_session)
+    ]
+    return normalize_import(files, mappings)
+
+
+def _validation_response(session_id: str, normalized: NormalizedImport) -> ImportValidationResponse:
+    return ImportValidationResponse(
+        session_id=session_id,
+        status=ImportStatus.VALIDATED if not normalized.errors else ImportStatus.FAILED,
+        errors=list(normalized.errors),
+        warnings=list(normalized.warnings),
+        normalized_columns=normalized.normalized_columns,
+        estimated_metrics=["rpm", "fuel_tpd"],
+        rows_accepted=len(normalized.samples),
+        rows_rejected=normalized.rows_rejected,
+    )
 
 
 def _validated_filename(upload: UploadFile) -> str:

@@ -1,6 +1,6 @@
 # Backend
 
-The v0.3.0 FastAPI backend initializes its SQLite schema during application startup and includes a reusable CSV inspection layer. Source speed units are always explicit and normalize to knots; missing or unsupported units fail validation. The staged import API accepts temporary multi-file CSV uploads and supports preview, mapping updates, and cancellation without writing vessel telemetry.
+The v0.4.0 FastAPI backend initializes its SQLite schema during application startup and includes a reusable CSV inspection layer. Source speed units are always explicit and normalize to knots; missing or unsupported units fail validation. The staged import API supports preview, mapping updates, validation, and transactional vessel commits. GPS and motion files are joined by timestamp, and derived RPM/fuel values are stored as estimated metrics.
 
 ```bash
 python -m venv .venv

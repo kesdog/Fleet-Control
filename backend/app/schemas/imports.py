@@ -66,3 +66,32 @@ class UpdateMappingResponse(BaseModel):
     session_id: str
     status: ImportStatus
     mapping: dict[str, FileMapping]
+
+
+class ImportValidationResponse(BaseModel):
+    session_id: str
+    status: ImportStatus
+    errors: list[str]
+    warnings: list[str]
+    normalized_columns: dict[str, list[str]]
+    estimated_metrics: list[str]
+    rows_accepted: int
+    rows_rejected: int
+
+
+class CommitMode(StrEnum):
+    CREATE = "CREATE"
+    REPLACE = "REPLACE"
+
+
+class CommitImportRequest(BaseModel):
+    imo: str = Field(min_length=1, max_length=32)
+    name: str | None = Field(default=None, max_length=255)
+    mode: CommitMode
+
+
+class CommitImportResponse(BaseModel):
+    session_id: str
+    status: ImportStatus
+    imo: str
+    samples_imported: int

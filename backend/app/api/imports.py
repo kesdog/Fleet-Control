@@ -6,16 +6,21 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.schemas.imports import (
+    CommitImportRequest,
+    CommitImportResponse,
     ImportPreviewResponse,
+    ImportValidationResponse,
     StartImportResponse,
     UpdateMappingRequest,
     UpdateMappingResponse,
 )
 from app.services.import_service import (
     cancel_import_session,
+    commit_import_session,
     create_import_session,
     preview_import_session,
     update_mapping,
+    validate_import_session,
 )
 
 router = APIRouter(prefix="/imports", tags=["imports"])
@@ -58,6 +63,25 @@ def set_mapping(
     session: Annotated[Session, Depends(get_database_session)],
 ) -> UpdateMappingResponse:
     return update_mapping(session, session_id, payload)
+
+
+@router.post("/{session_id}/validate", response_model=ImportValidationResponse)
+def validate_import(
+    session_id: str,
+    session: Annotated[Session, Depends(get_database_session)],
+    settings: Annotated[Settings, Depends(get_runtime_settings)],
+) -> ImportValidationResponse:
+    return validate_import_session(session, settings.imports_directory, session_id)
+
+
+@router.post("/{session_id}/commit", response_model=CommitImportResponse)
+def commit_import(
+    session_id: str,
+    payload: CommitImportRequest,
+    session: Annotated[Session, Depends(get_database_session)],
+    settings: Annotated[Settings, Depends(get_runtime_settings)],
+) -> CommitImportResponse:
+    return commit_import_session(session, settings.imports_directory, session_id, payload)
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)
