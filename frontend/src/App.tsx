@@ -1,12 +1,15 @@
-import { useState } from 'react'
+import { lazy, Suspense, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Download, Radio } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { getMetrics, getVessel, getVessels } from './api/client'
+import { getMetrics, getTrajectory, getVessel, getVessels } from './api/client'
 import { ApiStatus } from './components/ApiStatus'
 import { FleetControls } from './components/FleetControls'
 import { LanguageSwitcher } from './components/LanguageSwitcher'
 import { VesselDetails } from './components/VesselDetails'
+
+// MapLibre is sizeable; defer it until the map workspace renders rather than delaying the control shell.
+const VesselMap = lazy(() => import('./components/VesselMap').then((module) => ({ default: module.VesselMap })))
 
 function toInputDate(value: string | null) {
   if (!value) return ''
@@ -31,6 +34,9 @@ function App() {
   const selectedMetricDefinition = metricsQuery.data?.find((metric) => metric.key === activeMetric)
   const activeStart = start || toInputDate(selectedSummary?.start ?? null)
   const activeEnd = end || toInputDate(selectedSummary?.end ?? null)
+  const rangeValid = !activeStart || !activeEnd || activeStart <= activeEnd
+  // A new query key keeps the basemap route synchronized with vessel, metric, and date controls.
+  const trajectoryQuery = useQuery({ queryKey: ['trajectory', activeImo, activeMetric, activeStart, activeEnd], queryFn: () => getTrajectory(activeImo, activeMetric, activeStart, activeEnd), enabled: Boolean(activeImo && activeMetric && rangeValid) })
 
   const changeVessel = (imo: string) => {
     const vessel = vesselsQuery.data?.find((item) => item.imo === imo)
@@ -39,7 +45,6 @@ function App() {
     setStart(toInputDate(vessel?.start ?? null))
     setEnd(toInputDate(vessel?.end ?? null))
   }
-  const rangeValid = !activeStart || !activeEnd || activeStart <= activeEnd
   const controlsDisabled = vesselsQuery.isPending || !vesselsQuery.data?.length
 
   return <div className="app-shell">
@@ -49,7 +54,7 @@ function App() {
       <FleetControls vessels={vesselsQuery.data ?? []} selectedImo={activeImo} metrics={metricsQuery.data ?? []} selectedMetric={activeMetric} start={activeStart} end={activeEnd} loading={vesselsQuery.isPending} disabled={controlsDisabled} rangeValid={rangeValid} onVesselChange={changeVessel} onMetricChange={setSelectedMetric} onStartChange={setStart} onEndChange={setEnd} />
       {vesselsQuery.isError ? <div className="fleet-error" role="alert"><p>{t('errors.fleet')}</p><button className="text-button" type="button" onClick={() => void vesselsQuery.refetch()}>{t('errors.retry')}</button></div> : null}
       <section className="workspace-grid" aria-label={t('dashboard.eyebrow')}>
-        <article className="map-workspace"><div className="panel-heading"><div><p className="eyebrow">01</p><h2>{t('dashboard.mapTitle')}</h2></div><span className="panel-status">v0.11.0</span></div>{/* This placeholder reserves the map-first layout for the MapLibre milestone. */}<div className="map-grid" aria-hidden="true"><span className="map-axis axis-x" /><span className="map-axis axis-y" /><span className="map-point point-one" /><span className="map-point point-two" /><span className="map-route" /></div><p className="panel-note">{t('dashboard.mapDescription')}</p></article>
+        <Suspense fallback={<article className="map-workspace"><p className="loading-copy">{t('map.loading')}</p></article>}><VesselMap trajectory={trajectoryQuery.data} loading={Boolean(activeImo && activeMetric) && trajectoryQuery.isPending} error={trajectoryQuery.isError} onRetry={() => void trajectoryQuery.refetch()} /></Suspense>
         <VesselDetails vessel={vesselQuery.data} metric={selectedMetricDefinition} loading={Boolean(activeImo) && (vesselQuery.isPending || metricsQuery.isPending)} error={vesselQuery.isError || metricsQuery.isError} onRetry={() => { void vesselQuery.refetch(); void metricsQuery.refetch() }} />
       </section>
       <ApiStatus />

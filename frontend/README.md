@@ -1,8 +1,8 @@
 # Fleet Control Center Frontend
 
-The v0.10.0 frontend is a React + TypeScript Vite application for the Marine Fleet Control Center.
+The v0.11.0 frontend is a React + TypeScript Vite application for the Marine Fleet Control Center.
 
-It provides the shared desktop shell, typed backend clients, TanStack Query server-state wiring, vessel and metric controls, metadata provenance, a root error boundary, Tailwind CSS setup, and English/French UI selection persisted in browser storage.
+It provides the shared desktop shell, typed backend clients, TanStack Query server-state wiring, vessel and metric controls, MapLibre world-map trajectory rendering, metadata provenance, a root error boundary, Tailwind CSS setup, and English/French UI selection persisted in browser storage.
 
 ## Run locally
 

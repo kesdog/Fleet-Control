@@ -679,6 +679,8 @@ v0.10.0
 
 Introduce the geographic view.
 
+Show an actual map
+
 ### Scope
 
 Implement:
@@ -700,10 +702,12 @@ At this stage a basic route line may be shown before deck.gl takes over advanced
 
 ### Acceptance
 
+- real world map shown and visibly rendered
 - Selected vessel trajectory appears geographically correctly.
 - Map bounds adjust to selected data.
 - Dateline-split backend segments render correctly.
 - Map remains usable on common desktop resolutions.
+
 
 ### GitHub tag
 

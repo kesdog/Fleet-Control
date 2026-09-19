@@ -2,7 +2,7 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.10.0
+## Version 0.11.0
 
 This milestone provides the Python backend foundation plus deterministic CSV inspection:
 
@@ -24,6 +24,7 @@ This milestone provides the Python backend foundation plus deterministic CSV ins
 - Vite development proxy for the backend API and a desktop-first operations shell.
 - Vessel, metric, and available date-range controls backed by cache-read APIs.
 - Vessel metadata and measured/estimated metric details with backend-provided provenance.
+- MapLibre world basemap with selected-vessel trajectory rendering, reset/zoom controls, and automatic route bounds fitting.
 
 ## Run the frontend
 
@@ -35,7 +36,17 @@ npm install
 npm run dev
 ```
 
-The frontend runs at `http://127.0.0.1:5173` and proxies `/api` requests to the FastAPI server at `http://127.0.0.1:8000`. Run `npm run build` from `frontend/` to verify the production build.
+The frontend runs at `http://127.0.0.1:5173` and proxies `/api` requests to the FastAPI server at `http://127.0.0.1:8000`.
+
+The frontend uses MapLibre GL JS with the official MapLibre demonstration globe style and an OpenStreetMap tile base for resilient visible cartography. It sends the selected vessel, metric, and date range to the trajectory endpoint, renders the server-provided route segments, and fits the map to returned coordinates. The server is responsible for splitting routes at International Date Line crossings.
+
+Frontend structure:
+
+- `frontend/src/api/client.ts`: typed API entry points.
+- `frontend/src/components/FleetControls.tsx`: shared vessel, date, and metric filters.
+- `frontend/src/components/VesselMap.tsx`: MapLibre lifecycle, trajectory source, and map controls.
+- `frontend/src/components/VesselDetails.tsx`: backend-provided vessel and metric provenance.
+- `frontend/src/i18n.ts`: English/French resources and persisted language selection.
 
 ## Run the backend
 
@@ -60,6 +71,12 @@ cd backend
 pytest
 ruff check .
 mypy app
+```
+
+```bash
+cd frontend
+npm run build
+npm run lint
 ```
 
 The development database defaults to `backend/data/fleet.db`. Set `DATABASE_URL` to use another SQLite database, for example:
