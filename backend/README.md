@@ -1,6 +1,6 @@
 # Backend
 
-The v0.1.0 FastAPI backend initializes its SQLite schema during application startup.
+The v0.2.0 FastAPI backend initializes its SQLite schema during application startup and includes a reusable CSV inspection layer. Source speed units are always explicit and normalize to knots; missing or unsupported units fail validation.
 
 ```bash
 python -m venv .venv

@@ -2,13 +2,16 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.1.0
+## Version 0.2.0
 
-This milestone provides the Python backend foundation only:
+This milestone provides the Python backend foundation plus deterministic CSV inspection:
 
 - FastAPI application with a health endpoint.
 - SQLite database initialized automatically at startup.
 - SQLAlchemy models for vessels, samples, vessel metrics, and import sessions.
+- CSV header, delimiter, numeric, timestamp, and navigation-field detection.
+- Conversion of explicitly identified `knots`, `km/h`, `mph`, and `m/s` speeds to knots.
+- Validation that rejects missing or unsupported speed units without guessing.
 - Tests, Ruff linting, and mypy configuration.
 
 ## Run the backend

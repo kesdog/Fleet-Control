@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Marine Fleet Control Center",
-        version="0.1.0",
+        version="0.2.0",
         lifespan=lifespan,
     )
     app.include_router(health_router, prefix="/api")
