@@ -1,6 +1,6 @@
 # Backend
 
-The v0.7.0 FastAPI backend initializes its SQLite schema during application startup and includes a reusable CSV inspection layer. Source speed units are always explicit and normalize to knots; missing or unsupported units fail validation. The staged import API supports preview, mapping updates, validation, and transactional vessel commits. GPS and motion files are joined by timestamp, and derived RPM/fuel values are stored as estimated metrics. SQLite data is hydrated into immutable cache snapshots; each sample lists source telemetry that was missing instead of treating it as estimated data. Cache-backed vessel, metric, telemetry, trajectory, and series endpoints expose frontend-ready normalized contracts without SQLite reads. Trajectories split at dateline crossings and visualization responses support endpoint-preserving downsampling.
+The v0.8.0 FastAPI backend initializes its SQLite schema during application startup and includes a reusable CSV inspection layer. Source speed units are always explicit and normalize to knots; missing or unsupported units fail validation. The staged import API supports preview, mapping updates, validation, and transactional vessel commits. GPS and motion files are joined by timestamp, and derived RPM/fuel values are stored as estimated metrics. SQLite data is hydrated into immutable cache snapshots; each sample lists source telemetry that was missing instead of treating it as estimated data. Cache-backed vessel, metric, telemetry, trajectory, and series endpoints expose frontend-ready normalized contracts without SQLite reads. Trajectories split at dateline crossings and visualization responses support endpoint-preserving downsampling.
 
 ```bash
 python -m venv .venv
@@ -12,3 +12,5 @@ uvicorn app.main:app --reload
 `GET /api/health` confirms the application and database are available.
 
 Run checks with `pytest`, `ruff check .`, and `mypy app`.
+
+Project-level architecture, assumptions, and endpoint documentation live in `../docs/`.

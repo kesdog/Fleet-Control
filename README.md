@@ -2,7 +2,7 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.7.0
+## Version 0.8.0
 
 This milestone provides the Python backend foundation plus deterministic CSV inspection:
 
@@ -15,6 +15,8 @@ This milestone provides the Python backend foundation plus deterministic CSV ins
 - Staged, temporary multi-file CSV uploads with preview, mapping, and cancellation APIs.
 - Validation and transactional `CREATE`/`REPLACE` commits that join GPS and motion rows by timestamp.
 - Immutable startup-hydrated cache with per-sample missing-telemetry markers.
+- Cache-backed vessel, telemetry, trajectory, and series visualization APIs.
+- Release documentation in [architecture](docs/architecture.md), [assumptions](docs/assumptions.md), and [API reference](docs/api.md).
 - Tests, Ruff linting, and mypy configuration.
 
 ## Run the backend
@@ -30,6 +32,8 @@ uvicorn app.main:app --reload
 ```
 
 Open `http://127.0.0.1:8000/docs` for the interactive API documentation.
+
+The backend permits the planned Vite development origin, `http://localhost:5173`. Override the JSON list through `CORS_ORIGINS` when deploying another frontend origin.
 
 ## Verify
 
@@ -61,3 +65,9 @@ RPM and fuel consumption are estimated only when a measured Speed Over Ground (S
 The cache-backed read API provides `GET /api/vessels`, `GET /api/vessels/{imo}`, `GET /api/vessels/{imo}/metrics`, and `GET /api/vessels/{imo}/telemetry`. Telemetry accepts optional ISO 8601 `start` and `end` query parameters. Read responses perform no SQLite queries and expose `missing_fields` independently from estimated metrics.
 
 Visualization clients can use `GET /api/vessels/{imo}/trajectory` and `GET /api/vessels/{imo}/series/{metric}`. Both accept `start`, `end`, and optional `max_points` parameters. Trajectories split automatically at International Date Line crossings, while series and trajectory downsampling deterministically preserve first and last points.
+
+## Documentation
+
+- [Architecture](docs/architecture.md)
+- [Assumptions](docs/assumptions.md)
+- [API reference and curl examples](docs/api.md)
