@@ -1,0 +1,13 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+*.py[cod]
+.env
+.env.*
+*.pem
+*.key
+backend/data/*.db
+backend/data/imports/
+PLAN.md
