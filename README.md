@@ -2,7 +2,7 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.5.0
+## Version 0.6.0
 
 This milestone provides the Python backend foundation plus deterministic CSV inspection:
 
@@ -55,3 +55,7 @@ After preview and mapping, call `POST /api/imports/{session_id}/validate`. A suc
 At startup, vessel data is hydrated into an immutable in-memory read cache. Each cached sample includes `missing_fields`, which identifies source telemetry not supplied for that timestamp. This is distinct from estimated metrics, whose definitions include `origin`, `formula`, `based_on`, and `warning` metadata.
 
 RPM and fuel consumption are estimated only when a measured Speed Over Ground (SOG) value is available. The backend calculates `estimated_rpm = 4 * SOG_knots` and `estimated_fuel_tpd = 150 * (SOG_knots / 15)^3`; neither value is presented as measured telemetry.
+
+## Read API
+
+The cache-backed read API provides `GET /api/vessels`, `GET /api/vessels/{imo}`, `GET /api/vessels/{imo}/metrics`, and `GET /api/vessels/{imo}/telemetry`. Telemetry accepts optional ISO 8601 `start` and `end` query parameters. Read responses perform no SQLite queries and expose `missing_fields` independently from estimated metrics.
