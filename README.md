@@ -2,7 +2,7 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.8.0
+## Version 0.9.0
 
 This milestone provides the Python backend foundation plus deterministic CSV inspection:
 
@@ -18,6 +18,22 @@ This milestone provides the Python backend foundation plus deterministic CSV ins
 - Cache-backed vessel, telemetry, trajectory, and series visualization APIs.
 - Release documentation in [architecture](docs/architecture.md), [assumptions](docs/assumptions.md), and [API reference](docs/api.md).
 - Tests, Ruff linting, and mypy configuration.
+- React + TypeScript frontend foundation in `frontend/`.
+- Typed API health client, TanStack Query setup, and non-blocking API status display.
+- English/French UI switching persisted in localStorage.
+- Vite development proxy for the backend API and a desktop-first operations shell.
+
+## Run the frontend
+
+Start the backend first, then in another terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+The frontend runs at `http://127.0.0.1:5173` and proxies `/api` requests to the FastAPI server at `http://127.0.0.1:8000`. Run `npm run build` from `frontend/` to verify the production build.
 
 ## Run the backend
 
