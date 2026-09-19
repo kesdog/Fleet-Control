@@ -24,6 +24,7 @@ _UNIT_PATTERN = re.compile(r"\[([^\]]+)\]")
 
 
 def extract_unit(column_name: str) -> str | None:
+    # Source exports express units in square brackets, e.g. "Speed [kn]".
     match = _UNIT_PATTERN.search(column_name)
     return match.group(1).strip() if match else None
 
@@ -45,6 +46,7 @@ def detect_column(header: str) -> DetectedColumn:
 
 
 def _normalized_header(header: str) -> str:
+    # Metadata describes the producer, not the field semantic, so remove it before matching.
     without_metadata = re.sub(r"\[[^\]]*\]|\([^)]*\)", "", header.lower())
     return re.sub(r"[^a-z0-9]+", " ", without_metadata).strip()
 

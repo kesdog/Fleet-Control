@@ -27,6 +27,7 @@ def inspect_csv(path: Path) -> CsvInspection:
     with path.open("r", encoding="utf-8-sig", newline="") as source:
         sample = source.read(8192)
         source.seek(0)
+        # Inspect a small prefix so semicolon and tab exports work without caller configuration.
         delimiter = detect_delimiter(sample)
         reader = csv.DictReader(source, delimiter=delimiter)
         if reader.fieldnames is None or not all(reader.fieldnames):
@@ -65,6 +66,7 @@ def _numeric_columns(headers: tuple[str, ...], rows: tuple[dict[str, str], ...])
     numeric: list[str] = []
     for header in headers:
         values = [row[header].strip() for row in rows if row[header].strip()]
+        # A column is numeric only when every populated value can be parsed as a float.
         if values and all(_is_float(value) for value in values):
             numeric.append(header)
     return tuple(numeric)

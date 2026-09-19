@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     """Runtime configuration loaded from environment variables."""
 
     database_url: str = "sqlite:///./data/fleet.db"
+    imports_directory: Path = Path("./data/imports")
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
@@ -19,6 +20,10 @@ class Settings(BaseSettings):
 
         database_path = Path(self.database_url.removeprefix(prefix))
         database_path.parent.mkdir(parents=True, exist_ok=True)
+
+    def ensure_imports_directory(self) -> None:
+        # Each import session gets a child directory beneath this configured root.
+        self.imports_directory.mkdir(parents=True, exist_ok=True)
 
 
 @lru_cache

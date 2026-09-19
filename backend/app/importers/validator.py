@@ -44,9 +44,11 @@ def validate_inspection(
         if column.semantic_field is not None
     }
 
+    # An explicit mapping supplied by the caller takes precedence over the header unit.
     _validate_speed_unit(semantic_columns.get(SemanticField.SOG), overrides, errors)
     _validate_required_gps_columns(semantic_columns, errors)
 
+    # CSV row numbers start at two because the first source row is the header.
     for row_index, row in enumerate(inspection.rows, start=2):
         _validate_timestamp(row, row_index, semantic_columns.get(SemanticField.TIMESTAMP), errors)
         _validate_float_range(

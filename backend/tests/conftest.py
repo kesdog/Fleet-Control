@@ -9,7 +9,10 @@ from app.main import create_app
 
 @pytest.fixture
 def settings(tmp_path: object) -> Settings:
-    return Settings(database_url=f"sqlite:///{tmp_path}/test-fleet.db")
+    return Settings(
+        database_url=f"sqlite:///{tmp_path}/test-fleet.db",
+        imports_directory=tmp_path / "imports",
+    )
 
 
 @pytest.fixture
