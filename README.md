@@ -2,7 +2,7 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.6.0
+## Version 0.7.0
 
 This milestone provides the Python backend foundation plus deterministic CSV inspection:
 
@@ -59,3 +59,5 @@ RPM and fuel consumption are estimated only when a measured Speed Over Ground (S
 ## Read API
 
 The cache-backed read API provides `GET /api/vessels`, `GET /api/vessels/{imo}`, `GET /api/vessels/{imo}/metrics`, and `GET /api/vessels/{imo}/telemetry`. Telemetry accepts optional ISO 8601 `start` and `end` query parameters. Read responses perform no SQLite queries and expose `missing_fields` independently from estimated metrics.
+
+Visualization clients can use `GET /api/vessels/{imo}/trajectory` and `GET /api/vessels/{imo}/series/{metric}`. Both accept `start`, `end`, and optional `max_points` parameters. Trajectories split automatically at International Date Line crossings, while series and trajectory downsampling deterministically preserve first and last points.

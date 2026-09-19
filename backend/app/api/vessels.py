@@ -5,7 +5,18 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from app.schemas.telemetry import TelemetryRecordResponse, TelemetryResponse
 from app.schemas.vessels import MetricResponse, VesselResponse, VesselSummaryResponse
-from app.services.fleet_cache import FleetCacheManager, MetricCacheEntry, VesselCacheEntry
+from app.schemas.visualization import (
+    SeriesPointResponse,
+    SeriesResponse,
+    TrajectoryPointResponse,
+    TrajectoryResponse,
+)
+from app.services.fleet_cache import (
+    FleetCacheManager,
+    MetricCacheEntry,
+    SampleCacheEntry,
+    VesselCacheEntry,
+)
 
 router = APIRouter(prefix="/vessels", tags=["vessels"])
 
@@ -69,6 +80,78 @@ def get_telemetry(
     )
 
 
+@router.get("/{imo}/trajectory", response_model=TrajectoryResponse)
+def get_trajectory(
+    imo: str,
+    request: Request,
+    metric: Annotated[str, Query(min_length=1)] = "sog",
+    start: Annotated[datetime | None, Query()] = None,
+    end: Annotated[datetime | None, Query()] = None,
+    max_points: Annotated[int | None, Query(ge=2)] = None,
+) -> TrajectoryResponse:
+    entry = _require_vessel(get_fleet_cache(request), imo)
+    metric_definition = _require_metric(entry, metric)
+    normalized_start = _normalize_timestamp(start)
+    normalized_end = _normalize_timestamp(end)
+    _validate_range(entry, normalized_start, normalized_end)
+    samples = _downsample(entry.samples_in_range(normalized_start, normalized_end), max_points)
+    segments: list[list[TrajectoryPointResponse]] = [[]]
+    previous_longitude: float | None = None
+    for sample in samples:
+        if previous_longitude is not None and abs(sample.longitude_deg - previous_longitude) > 180:
+            # Map libraries must not draw an artificial line across the entire world.
+            segments.append([])
+        value = _metric_value(sample, metric)
+        segments[-1].append(
+            TrajectoryPointResponse(
+                timestamp=sample.timestamp,
+                latitude_deg=sample.latitude_deg,
+                longitude_deg=sample.longitude_deg,
+                metric_value=value,
+                missing=metric in sample.missing_fields,
+            )
+        )
+        previous_longitude = sample.longitude_deg
+    return TrajectoryResponse(
+        imo=entry.imo,
+        metric=_metric_response(metric_definition),
+        start=normalized_start,
+        end=normalized_end,
+        segments=segments if samples else [],
+    )
+
+
+@router.get("/{imo}/series/{metric}", response_model=SeriesResponse)
+def get_series(
+    imo: str,
+    metric: str,
+    request: Request,
+    start: Annotated[datetime | None, Query()] = None,
+    end: Annotated[datetime | None, Query()] = None,
+    max_points: Annotated[int | None, Query(ge=2)] = None,
+) -> SeriesResponse:
+    entry = _require_vessel(get_fleet_cache(request), imo)
+    metric_definition = _require_metric(entry, metric)
+    normalized_start = _normalize_timestamp(start)
+    normalized_end = _normalize_timestamp(end)
+    _validate_range(entry, normalized_start, normalized_end)
+    samples = _downsample(entry.samples_in_range(normalized_start, normalized_end), max_points)
+    return SeriesResponse(
+        imo=entry.imo,
+        metric=_metric_response(metric_definition),
+        start=normalized_start,
+        end=normalized_end,
+        points=[
+            SeriesPointResponse(
+                timestamp=sample.timestamp,
+                value=_metric_value(sample, metric),
+                missing=metric in sample.missing_fields,
+            )
+            for sample in samples
+        ],
+    )
+
+
 def _require_vessel(cache: FleetCacheManager, imo: str) -> VesselCacheEntry:
     entry = cache.snapshot.get(imo)
     if entry is None:
@@ -76,6 +159,16 @@ def _require_vessel(cache: FleetCacheManager, imo: str) -> VesselCacheEntry:
             status_code=status.HTTP_404_NOT_FOUND, detail=f"Vessel {imo} was not found."
         )
     return entry
+
+
+def _require_metric(entry: VesselCacheEntry, key: str) -> MetricCacheEntry:
+    for metric in entry.metric_definitions:
+        if metric.key == key:
+            return metric
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Metric {key!r} is not available for vessel {entry.imo}.",
+    )
 
 
 def _validate_range(
@@ -129,3 +222,25 @@ def _metric_response(metric: MetricCacheEntry) -> MetricResponse:
         based_on=list(metric.based_on),
         warning=metric.warning,
     )
+
+
+def _metric_value(sample: SampleCacheEntry, key: str) -> float | None:
+    values = {
+        "latitude_deg": sample.latitude_deg,
+        "longitude_deg": sample.longitude_deg,
+        "sog": sample.sog_knots,
+        "course": sample.course_deg,
+        "heading": sample.heading_deg,
+        "rpm": sample.estimated_rpm,
+        "fuel_tpd": sample.estimated_fuel_tpd,
+    }
+    return values.get(key, sample.metrics.get(key))
+
+
+def _downsample(
+    samples: tuple[SampleCacheEntry, ...], max_points: int | None
+) -> tuple[SampleCacheEntry, ...]:
+    if max_points is None or len(samples) <= max_points:
+        return samples
+    indexes = {round(index * (len(samples) - 1) / (max_points - 1)) for index in range(max_points)}
+    return tuple(samples[index] for index in sorted(indexes))
