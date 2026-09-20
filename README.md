@@ -2,7 +2,7 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.11.0
+## Version 0.12.0
 
 This milestone provides the Python backend foundation plus deterministic CSV inspection:
 
@@ -25,6 +25,7 @@ This milestone provides the Python backend foundation plus deterministic CSV ins
 - Vessel, metric, and available date-range controls backed by cache-read APIs.
 - Vessel metadata and measured/estimated metric details with backend-provided provenance.
 - MapLibre world basemap with selected-vessel trajectory rendering, reset/zoom controls, and automatic route bounds fitting.
+- Browser-based CSV upload, validation, and commit flow for telemetry data.
 
 ## Run the frontend
 
@@ -75,6 +76,7 @@ mypy app
 
 ```bash
 cd frontend
+npm run test
 npm run build
 npm run lint
 ```
