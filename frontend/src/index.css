@@ -20,7 +20,7 @@
 
 .map-legend { right: 12px; left: auto; }
 .map-actions,.map-navigation,.map-legend,.trajectory-notice,.map-overlay { z-index: 2; }
-.raster-world-background,.map-pan-layer,.raster-world-base,.telemetry-points-canvas,.vessel-marker-overlay { position: absolute; inset: 0; }.raster-world-background { background: #fff; }.map-pan-layer { z-index: 0; pointer-events: none; transform: translate3d(0, 0, 0); }.raster-world-tile { position: absolute; display: block; max-width: none; }.telemetry-points-canvas,.vessel-marker-overlay { z-index: 6; width: 100%; height: 100%; pointer-events: none; }
+.raster-world-background,.map-pan-layer,.raster-world-base,.telemetry-points-canvas,.vessel-marker-overlay,.port-overlay { position: absolute; inset: 0; }.raster-world-background { background: #fff; }.map-pan-layer { z-index: 0; pointer-events: none; transform: translate3d(0, 0, 0); }.raster-world-tile { position: absolute; display: block; max-width: none; }.telemetry-points-canvas,.vessel-marker-overlay { z-index: 6; width: 100%; height: 100%; pointer-events: none; }.port-overlay { z-index: 5; width: 100%; height: 100%; pointer-events: none; }.port-tooltip { position: absolute; z-index: 7; padding: 3px 7px; color: #fff; background: #17313b; border-radius: 3px; font: 11px/1.3 "Courier New", monospace; pointer-events: none; white-space: nowrap; transform: translate(-50%, calc(-100% - 8px)); }
 .map-pan-surface { position: absolute; inset: 0; z-index: 2; cursor: grab; touch-action: none; }.map-pan-surface:active { cursor: grabbing; }.map-actions,.map-navigation,.map-legend,.trajectory-notice,.map-overlay { z-index: 3; }
 @media (min-width: 800px) { .map-pan-layer { will-change: transform; } }
 

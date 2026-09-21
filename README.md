@@ -2,9 +2,9 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.15.0
+## Version 0.16.0
 
-This milestone provides the Python backend, deterministic CSV inspection, and an operations frontend for map, replay, and chart telemetry review:
+This milestone provides the Python backend, deterministic CSV inspection, and an operations frontend for map, replay, and chart telemetry review. v0.16.0 is the frontend release candidate: it completes the English/French UI, adds keyboard accessibility for the vessel, date, metric, and replay controls, and removes development artifacts so the workspace is ready for interviewer review:
 
 - FastAPI application with a health endpoint.
 - SQLite database initialized automatically at startup.
@@ -25,6 +25,8 @@ This milestone provides the Python backend, deterministic CSV inspection, and an
 - Vessel, metric, and available date-range controls backed by cache-read APIs.
 - Vessel metadata and measured/estimated metric details with backend-provided provenance.
 - Lightweight OpenStreetMap raster basemap with selected-vessel telemetry rendering and reset/zoom controls.
+- Deeper-zoom raster sub-tile fetching so the basemap stays sharp instead of blurring as the camera zooms in.
+- Zoom-gated overlay of 400 major commercial ports with hover tooltips for geographic context.
 - Browser-based CSV upload, validation, and commit flow for telemetry data.
 - Point-only vessel mapping: vessel positions come from returned telemetry observations, while server-provided trajectory segments remain the route source.
 - Date-filtered telemetry replay linked to the map and telemetry-frame table.
@@ -35,6 +37,8 @@ This milestone provides the Python backend, deterministic CSV inspection, and an
 - Focused staged import view covering upload, detection preview, column/unit mapping, validation, review, cancellation, and explicit vessel replacement.
 - Native map-only fullscreen with fullscreen-only wheel zoom lock and application success/error notifications.
 - Configurable 2-12 replay frames per day with cadence-aware sampling and a guaranteed final telemetry frame.
+- Complete English/French interface with persisted language selection and no untranslated user-facing strings.
+- Keyboard-accessible vessel, date, metric, language, and replay playback controls with visible focus states and clear empty/loading/error messaging.
 
 ## Run the frontend
 

@@ -5,6 +5,8 @@ import type { TelemetryRecord } from '../api/client'
 import { dragRasterCamera, mercatorY, projectRasterPoint, rasterTileZoom } from '../map/rasterProjection'
 import { mapScale, type ScaleUnit } from '../map/scale'
 import { vesselColor } from '../vesselColors'
+import { portRadius, screenPorts, type ScreenPort } from '../map/ports'
+import { PortOverlay } from './PortOverlay'
 import './replayControls.css'
 
 type MapCenter = { latitude: number; longitude: number; zoom: number }
@@ -87,6 +89,8 @@ function VesselSilhouetteMarker({ imo, color, focused }: { imo: string; color: s
 }
 
 // Render native OSM tiles near the camera so coastlines and islands gain detail as the user zooms in.
+// When a grid cell would be upscaled past its native 256px resolution, fetch deeper-zoom sub-tiles so
+// the map stays sharp instead of blurring as the camera zooms in.
 const RasterWorldBase = memo(function RasterWorldBase({ center, viewport }: { center: MapCenter; viewport: MapViewport }) {
   if (!viewport.width || !viewport.height) return null
 
@@ -96,6 +100,12 @@ const RasterWorldBase = memo(function RasterWorldBase({ center, viewport }: { ce
   const centerX = ((center.longitude + 180) / 360) * tileCount
   const centerY = (1 - Math.asinh(Math.tan(latitude)) / Math.PI) / 2 * tileCount
   const tileSize = (viewport.width / 4) * 2 ** (center.zoom - 2)
+  // Fetch one or two deeper zoom levels so displayed sub-tiles stay near native resolution.
+  const detail = Math.max(0, Math.min(2, Math.round(Math.log2(tileSize / 256))))
+  const sub = 2 ** detail
+  const fetchZoom = zoom + detail
+  const fetchTileCount = 2 ** fetchZoom
+  const subTileSize = tileSize / sub
   const desktopOverscan = viewport.width >= 800 ? Math.ceil(viewport.width / tileSize) : 2
   const xRadius = Math.ceil(viewport.width / tileSize / 2) + desktopOverscan
   const yRadius = Math.ceil(viewport.height / tileSize / 2) + desktopOverscan
@@ -104,22 +114,32 @@ const RasterWorldBase = memo(function RasterWorldBase({ center, viewport }: { ce
   for (let y = Math.floor(centerY) - yRadius; y <= Math.floor(centerY) + yRadius; y += 1) {
     if (y < 0 || y >= tileCount) continue
     for (let x = Math.floor(centerX) - xRadius; x <= Math.floor(centerX) + xRadius; x += 1) {
-      tiles.push(
-        <img
-          className="raster-world-tile"
-          key={`${zoom}-${x}-${y}`}
-          src={`https://tile.openstreetmap.org/${zoom}/${positiveModulo(x, tileCount)}/${y}.png`}
-          alt=""
-          draggable={false}
-          decoding="async"
-          style={{
-            width: tileSize,
-            height: tileSize,
-            left: viewport.width / 2 + (x - centerX) * tileSize,
-            top: viewport.height / 2 + (y - centerY) * tileSize,
-          }}
-        />,
-      )
+      const cellX = positiveModulo(x, tileCount)
+      const left = viewport.width / 2 + (x - centerX) * tileSize
+      const top = viewport.height / 2 + (y - centerY) * tileSize
+      for (let sy = 0; sy < sub; sy += 1) {
+        const fy = y * sub + sy
+        if (fy < 0 || fy >= fetchTileCount) continue
+        for (let sx = 0; sx < sub; sx += 1) {
+          const fx = cellX * sub + sx
+          tiles.push(
+            <img
+              className="raster-world-tile"
+              key={`${fetchZoom}-${x}-${y}-${sx}-${sy}`}
+              src={`https://tile.openstreetmap.org/${fetchZoom}/${positiveModulo(fx, fetchTileCount)}/${fy}.png`}
+              alt=""
+              draggable={false}
+              decoding="async"
+              style={{
+                width: subTileSize,
+                height: subTileSize,
+                left: left + sx * subTileSize,
+                top: top + sy * subTileSize,
+              }}
+            />,
+          )
+        }
+      }
     }
   }
 
@@ -213,9 +233,9 @@ function MapControls({ onReset, onZoomIn, onZoomOut, onFullscreen, fullscreen, f
 }
 
 function CameraReadout({ center }: { center: MapCenter }) {
+  const { t } = useTranslation()
   return <div className="map-navigation" style={{ top: 12, bottom: 'auto' }}>
-    <span>Viewport center (debug)</span>
-    <span aria-live="polite">Lat {center.latitude.toFixed(6)} | Lon {center.longitude.toFixed(6)} | Zoom {center.zoom.toFixed(2)}</span>
+    <span aria-live="polite">{t('map.position', { latitude: center.latitude.toFixed(6), longitude: center.longitude.toFixed(6), zoom: center.zoom.toFixed(2) })}</span>
   </div>
 }
 
@@ -227,11 +247,17 @@ function MapScale({ center, viewport, unit }: { center: MapCenter; viewport: Map
 }
 
 function ReplaySlider({ replay }: { replay: ReplaySliderProps }) {
+  const { t } = useTranslation()
   return <label className="replay-slider" aria-label={replay.label ?? 'Replay position'}>
     <span>{replay.label ?? 'Replay'}</span>
     <input type="range" min={replay.min} max={replay.max} step={replay.step ?? 1} value={replay.value} onChange={(event) => replay.onChange(Number(event.target.value))} />
-    <div className="replay-transport"><button type="button" aria-label="Previous replay frame" title="Previous replay frame" onClick={replay.onPrevious}><SkipBack size={14} /></button><button type="button" aria-label="Reverse play" title="Reverse play" onClick={replay.onPlayReverse}><Play size={14} style={{ transform: 'scaleX(-1)' }} /></button><button type="button" aria-label={replay.playing ? 'Pause replay' : 'Play replay'} title={replay.playing ? 'Pause replay' : 'Play replay'} onClick={replay.playing ? replay.onPause : replay.onPlay}>{replay.playing ? <Pause size={14} /> : <Play size={14} />}</button><button type="button" aria-label="Next replay frame" title="Next replay frame" onClick={replay.onNext}><SkipForward size={14} /></button></div>
-    {replay.onGoToTelemetry ? <button type="button" onClick={replay.onGoToTelemetry}>Go to telemetry</button> : null}
+    <div className="replay-transport">
+      <button type="button" aria-label={t('playback.previousFrame')} title={t('playback.previousFrame')} onClick={replay.onPrevious}><SkipBack size={14} /></button>
+      <button type="button" aria-label={t('playback.reversePlay')} title={t('playback.reversePlay')} onClick={replay.onPlayReverse}><Play size={14} style={{ transform: 'scaleX(-1)' }} /></button>
+      <button type="button" aria-label={replay.playing ? t('playback.pauseReplay') : t('playback.playReplay')} title={replay.playing ? t('playback.pauseReplay') : t('playback.playReplay')} onClick={replay.playing ? replay.onPause : replay.onPlay}>{replay.playing ? <Pause size={14} /> : <Play size={14} />}</button>
+      <button type="button" aria-label={t('playback.nextFrame')} title={t('playback.nextFrame')} onClick={replay.onNext}><SkipForward size={14} /></button>
+    </div>
+    {replay.onGoToTelemetry ? <button type="button" onClick={replay.onGoToTelemetry}>{t('playback.goToTelemetry')}</button> : null}
   </label>
 }
 
@@ -261,6 +287,7 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
   const [mapViewport, setMapViewport] = useState<MapViewport>({ width: 0, height: 0 })
   const [fullscreen, setFullscreen] = useState(false)
   const [fullscreenError, setFullscreenError] = useState('')
+  const [hoveredPort, setHoveredPort] = useState<ScreenPort | null>(null)
 
   useEffect(() => {
     const container = mapCanvasRef.current
@@ -426,6 +453,24 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
     [vesselTelemetry, routeEnd, routeStart],
   )
 
+  const visiblePorts = useMemo(() => screenPorts(mapCenter, mapViewport), [mapCenter, mapViewport])
+
+  const handlePortHover = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (!visiblePorts.length) { setHoveredPort(null); return }
+    const rect = event.currentTarget.getBoundingClientRect()
+    const x = event.clientX - rect.left
+    const y = event.clientY - rect.top
+    let best: ScreenPort | null = null
+    let bestDistance = 16
+    for (const port of visiblePorts) {
+      const dx = port.x - x
+      const dy = port.y - y
+      const distance = Math.sqrt(dx * dx + dy * dy)
+      if (distance <= bestDistance) { bestDistance = distance; best = port }
+    }
+    setHoveredPort(best)
+  }
+
   return <article className="map-workspace">
     <div className="panel-heading">
       <div><p className="eyebrow">01</p><h2>{t('dashboard.mapTitle')}</h2></div>
@@ -436,6 +481,7 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
       <div className="raster-world-background" aria-hidden="true" />
       <div ref={panLayerRef} className="map-pan-layer">
         <RasterWorldBase center={mapCenter} viewport={mapViewport} />
+        <PortOverlay ports={visiblePorts} radius={portRadius(mapCenter.zoom)} viewport={mapViewport} />
         <FrameOverlay center={mapCenter} viewport={mapViewport} vessels={filteredVessels} focusedImo={focusedImo} selectedFrame={selectedFrame} replayTimestamp={replayTimestamp} colorVersion={colorVersion} />
       </div>
       <div
@@ -443,11 +489,13 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
         className="map-pan-surface"
         aria-label={t('map.canvasLabel')}
         onPointerDown={startSurfacePan}
-        onPointerMove={moveSurfacePan}
+        onPointerMove={(event) => { moveSurfacePan(event); handlePortHover(event) }}
         onPointerUp={(event) => finishSurfacePan(event, true)}
         onPointerCancel={(event) => finishSurfacePan(event, false)}
         onLostPointerCapture={(event) => finishSurfacePan(event, false)}
+        onPointerLeave={() => setHoveredPort(null)}
       />
+      {hoveredPort ? <div className="port-tooltip" style={{ left: hoveredPort.x, top: hoveredPort.y }}>{hoveredPort.name}, {hoveredPort.country}</div> : null}
 
       {loading && !error ? <div className="map-overlay" role="status">{t('map.loading')}</div> : null}
       {error ? <div className="map-overlay map-error" role="alert"><p>{t('map.unavailable')}</p><button className="text-button" type="button" onClick={onRetry}>{t('errors.retry')}</button></div> : null}
@@ -467,6 +515,6 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
        <MapScale center={mapCenter} viewport={mapViewport} unit={scaleUnit} />
     </div>
 
-    <p className="panel-copy">World view. Select an imported vessel to plot its route.</p>
+    <p className="panel-copy">{t('map.worldView')}</p>
   </article>
 }
