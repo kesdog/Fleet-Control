@@ -9,7 +9,7 @@ const saved = localStorage.getItem(storageKey)
 const language = supportedLanguages.includes(saved as SupportedLanguage) ? saved! : 'en'
 
 const en = {
-  app: { name: 'Fleet Control Center', version: 'Trajectory assets v0.13.0' },
+  app: { name: 'Fleet Control Center', version: 'Trajectory assets v0.14.0' },
   actions: { import: 'Import vessel', retry: 'Retry connection' },
   languages: { label: 'Language', en: 'English', fr: 'French' },
   status: { label: 'API status', checking: 'Checking backend', connected: 'Backend connected', degraded: 'Backend degraded', unavailable: 'Backend unavailable', database: 'Database', cache: 'Telemetry cache', connectedValue: 'connected', unavailableValue: 'unavailable', initialized: 'initialized', notInitialized: 'not initialized' },
@@ -21,7 +21,7 @@ const en = {
 }
 
 const fr = {
-  app: { name: 'Centre de controle de flotte', version: 'Trajectoires v0.13.0' },
+  app: { name: 'Centre de controle de flotte', version: 'Trajectoires v0.14.0' },
   actions: { import: 'Importer un navire', retry: 'Reessayer la connexion' },
   languages: { label: 'Langue', en: 'Anglais', fr: 'Francais' },
   status: { label: "Etat de l'API", checking: 'Verification du serveur', connected: 'Serveur connecte', degraded: 'Serveur degrade', unavailable: 'Serveur indisponible', database: 'Base de donnees', cache: 'Cache de telemetrie', connectedValue: 'connectee', unavailableValue: 'indisponible', initialized: 'initialise', notInitialized: 'non initialise' },

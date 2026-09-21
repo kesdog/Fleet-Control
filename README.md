@@ -2,7 +2,7 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.13.0
+## Version 0.14.0
 
 This milestone provides the Python backend, deterministic CSV inspection, and an operations frontend for map, replay, and chart telemetry review:
 
@@ -30,6 +30,8 @@ This milestone provides the Python backend, deterministic CSV inspection, and an
 - Date-filtered telemetry replay linked to the map and telemetry-frame table.
 - Apache ECharts telemetry trends with metric unit, measured/estimated provenance, tooltips, and a zoomable time range.
 - A collapsible fleet manifest to keep the map workspace focused during review.
+- Synchronized replay cursors in every chart, a current-frame navigation readout, and a metric picker that adds charts below the final trend.
+- Modal workspace settings with map-scale units and the single backend API status display.
 
 ## Run the frontend
 
@@ -50,9 +52,11 @@ Frontend structure:
 - `frontend/src/api/client.ts`: typed API entry points.
 - `frontend/src/components/FleetControls.tsx`: shared vessel, date, and metric filters.
 - `frontend/src/components/VesselMap.tsx`: raster map lifecycle, canvas telemetry rendering, and map controls.
-- `frontend/src/components/TelemetryChart.tsx`: ECharts time-series view with provenance and range controls.
+- `frontend/src/components/TelemetryChart.tsx`: ECharts time-series view with provenance, range controls, and the shared replay mark line.
 - `frontend/src/components/VesselDetails.tsx`: backend-provided vessel and metric provenance.
 - `frontend/src/i18n.ts`: English/French resources and persisted language selection.
+
+In v0.14, replay always selects recorded frames (never generated positions). The active-vessel frame summary reports its recorded position, SOG, heading/course, backend-provided estimated RPM, and fuel rate. The map camera/grid/pan implementation remains independent of replay and is preserved while frames advance.
 
 ## Run the backend
 

@@ -1,9 +1,11 @@
 import { memo, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { RotateCcw, ZoomIn, ZoomOut } from 'lucide-react'
+import { Pause, Play, RotateCcw, SkipBack, SkipForward, ZoomIn, ZoomOut } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TelemetryRecord } from '../api/client'
 import { dragRasterCamera, mercatorY, projectRasterPoint, rasterTileZoom } from '../map/rasterProjection'
+import { mapScale, type ScaleUnit } from '../map/scale'
 import { vesselColor } from '../vesselColors'
+import './replayControls.css'
 
 type MapCenter = { latitude: number; longitude: number; zoom: number }
 type MapViewport = { width: number; height: number }
@@ -27,6 +29,12 @@ type ReplaySliderProps = {
   step?: number
   label?: string
   onGoToTelemetry?: () => void
+  playing: boolean
+  speed: number
+  onTogglePlay: () => void
+  onPlayReverse: () => void
+  onPrevious: () => void
+  onNext: () => void
 }
 
 type VesselMapProps = {
@@ -34,6 +42,8 @@ type VesselMapProps = {
   focusedImo: string
   selectedFrame?: TelemetryRecord
   replayTimestamp?: string
+  colorVersion: number
+  scaleUnit: ScaleUnit
   routeStart: string
   routeEnd: string
   onRouteStartChange: (date: string) => void
@@ -116,7 +126,7 @@ const RasterWorldBase = memo(function RasterWorldBase({ center, viewport }: { ce
 })
 
 // Only recorded frames are shown: no interpolated route lines are drawn between observations.
-const FrameOverlay = memo(function FrameOverlay({ center, viewport, vessels, focusedImo, selectedFrame, replayTimestamp }: { center: MapCenter; viewport: MapViewport; vessels: VesselTelemetry[]; focusedImo: string; selectedFrame?: TelemetryRecord; replayTimestamp?: string }) {
+const FrameOverlay = memo(function FrameOverlay({ center, viewport, vessels, focusedImo, selectedFrame, replayTimestamp, colorVersion }: { center: MapCenter; viewport: MapViewport; vessels: VesselTelemetry[]; focusedImo: string; selectedFrame?: TelemetryRecord; replayTimestamp?: string; colorVersion: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const preparedVessels = useMemo(() => vessels.map(({ imo, records }) => ({
     imo,
@@ -166,7 +176,7 @@ const FrameOverlay = memo(function FrameOverlay({ center, viewport, vessels, foc
       context.fill()
     }
     context.globalAlpha = 1
-  }, [center, focusedImo, preparedVessels, viewport])
+  }, [center, colorVersion, focusedImo, preparedVessels, viewport])
 
   if (!viewport.width || !viewport.height) return null
 
@@ -201,16 +211,24 @@ function MapControls({ onReset, onZoomIn, onZoomOut, labels }: { onReset: () => 
 }
 
 function CameraReadout({ center }: { center: MapCenter }) {
-  return <div className="map-navigation">
+  return <div className="map-navigation" style={{ top: 12, bottom: 'auto' }}>
     <span>Viewport center (debug)</span>
     <span aria-live="polite">Lat {center.latitude.toFixed(6)} | Lon {center.longitude.toFixed(6)} | Zoom {center.zoom.toFixed(2)}</span>
   </div>
 }
 
+function MapScale({ center, viewport, unit }: { center: MapCenter; viewport: MapViewport; unit: ScaleUnit }) {
+  if (!viewport.width) return null
+  const { distance, width } = mapScale(center, viewport, unit)
+  const label = distance >= 10 || Number.isInteger(distance) ? distance.toLocaleString() : distance.toFixed(1)
+  return <div className="map-scale" style={{ position: 'absolute', zIndex: 3, right: 12, bottom: 12, width, borderTop: '3px solid #263a44', color: '#263a44', background: 'rgba(255,255,255,.93)', font: '10px/1.25 "Courier New", monospace', textAlign: 'center' }} aria-label={`Map scale: ${label} ${unit}`}><span>{label} {unit}</span></div>
+}
+
 function ReplaySlider({ replay }: { replay: ReplaySliderProps }) {
-  return <label aria-label={replay.label ?? 'Replay position'} style={{ position: 'absolute', zIndex: 3, bottom: 70, left: 12, display: 'grid', gap: 4, width: 220, padding: '7px 10px', color: '#263a44', background: 'rgba(255, 255, 255, .93)', border: '1px solid #cbd6da', font: '10px/1.25 "Courier New", monospace' }}>
+  return <label className="replay-slider" aria-label={replay.label ?? 'Replay position'}>
     <span>{replay.label ?? 'Replay'}</span>
     <input type="range" min={replay.min} max={replay.max} step={replay.step ?? 1} value={replay.value} onChange={(event) => replay.onChange(Number(event.target.value))} />
+    <div className="replay-transport"><button type="button" aria-label="Previous replay frame" title="Previous replay frame" onClick={replay.onPrevious}><SkipBack size={14} /></button><button type="button" aria-label="Reverse play" title="Reverse play" onClick={replay.onPlayReverse}><Play size={14} style={{ transform: 'scaleX(-1)' }} /></button><button type="button" aria-label={replay.playing ? 'Pause replay' : 'Play replay'} title={replay.playing ? 'Pause replay' : 'Play replay'} onClick={replay.onTogglePlay}>{replay.playing ? <Pause size={14} /> : <Play size={14} />}</button><button type="button" aria-label="Next replay frame" title="Next replay frame" onClick={replay.onNext}><SkipForward size={14} /></button></div>
     {replay.onGoToTelemetry ? <button type="button" onClick={replay.onGoToTelemetry}>Go to telemetry</button> : null}
   </label>
 }
@@ -225,7 +243,7 @@ function filterRecordsByDate(records: TelemetryRecord[] | undefined, routeStart:
   return (records ?? []).filter((record) => record.timestamp.slice(0, 10) >= activeStart && record.timestamp.slice(0, 10) <= activeEnd)
 }
 
-export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTimestamp, routeStart, routeEnd, onRouteStartChange: _onRouteStartChange, onRouteEndChange: _onRouteEndChange, loading, error, onRetry, replay }: VesselMapProps) {
+export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTimestamp, colorVersion, scaleUnit, routeStart, routeEnd, onRouteStartChange: _onRouteStartChange, onRouteEndChange: _onRouteEndChange, loading, error, onRetry, replay }: VesselMapProps) {
   const { t } = useTranslation()
   const mapCanvasRef = useRef<HTMLDivElement>(null)
   const panLayerRef = useRef<HTMLDivElement>(null)
@@ -388,7 +406,7 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
       <div className="raster-world-background" aria-hidden="true" />
       <div ref={panLayerRef} className="map-pan-layer">
         <RasterWorldBase center={mapCenter} viewport={mapViewport} />
-       <FrameOverlay center={mapCenter} viewport={mapViewport} vessels={filteredVessels} focusedImo={focusedImo} selectedFrame={selectedFrame} replayTimestamp={replayTimestamp} />
+        <FrameOverlay center={mapCenter} viewport={mapViewport} vessels={filteredVessels} focusedImo={focusedImo} selectedFrame={selectedFrame} replayTimestamp={replayTimestamp} colorVersion={colorVersion} />
       </div>
       <div
         className="map-pan-surface"
@@ -410,8 +428,9 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
         onZoomIn={() => setMapCenter((camera) => ({ ...camera, zoom: Math.min(7, camera.zoom + 1) }))}
         onZoomOut={() => setMapCenter((camera) => ({ ...camera, zoom: Math.max(1.5, camera.zoom - 1) }))}
       />
-      {replay ? <ReplaySlider replay={replay} /> : null}
-      <CameraReadout center={mapCenter} />
+       {replay ? <ReplaySlider replay={replay} /> : null}
+       <CameraReadout center={mapCenter} />
+       <MapScale center={mapCenter} viewport={mapViewport} unit={scaleUnit} />
     </div>
 
     <p className="panel-copy">World view. Select an imported vessel to plot its route.</p>

@@ -1,8 +1,8 @@
 # Fleet Control Center Frontend
 
-The v0.13.0 frontend is a React + TypeScript Vite application for the Marine Fleet Control Center.
+The v0.14.0 frontend is a React + TypeScript Vite application for the Marine Fleet Control Center.
 
-It provides typed backend clients and TanStack Query wiring for CSV import, a collapsible fleet roster, telemetry replay, an interactive OSM map, and Apache ECharts time-series analysis. The selected vessel, metric, and date range update map routes, observation-backed vessel points, replay frames, the telemetry table, and chart together. Date inputs are converted to full calendar-day bounds and clamped to the vessel's available API range before requesting data.
+It provides typed backend clients and TanStack Query wiring for CSV import, a collapsible fleet roster, telemetry replay, an interactive OSM map, and Apache ECharts time-series analysis. The selected vessel, metric, and date range update map routes, observation-backed vessel points, replay frames, the telemetry table, and chart together. Every chart displays the selected replay timestamp as a mark line; the map shows the active vessel's recorded position, SOG, heading/course, RPM, and fuel frame summary. The clickable add button remains immediately below the final chart and opens a real metric-choice menu. Date inputs are converted to full calendar-day bounds and clamped to the vessel's available API range before requesting data.
 
 ## Run locally
 
@@ -22,7 +22,7 @@ npm install
 npm run dev
 ```
 
-Vite serves the frontend on `http://127.0.0.1:5173` and proxies `/api` requests to `http://127.0.0.1:8000`. The API status panel polls `GET /api/health` every 30 seconds without blocking the rest of the interface.
+Vite serves the frontend on `http://127.0.0.1:5173` and proxies `/api` requests to `http://127.0.0.1:8000`. Settings is a modal screen containing replay speed, km/mi/nm map-scale selection, and the single API health status panel, which polls `GET /api/health` every 30 seconds without blocking the rest of the interface.
 
 ## Structure
 
