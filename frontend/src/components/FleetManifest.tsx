@@ -11,7 +11,7 @@ export function FleetManifest({ vessels, selectedImos, focusedImo, onToggle, onC
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(true)
   return <aside className="fleet-manifest" aria-label={t('fleetManifest.selectionLabel')}>
-    <div className="panel-heading"><div><p className="eyebrow">02</p><h2>{t('fleetManifest.title')}</h2></div><span className="panel-status">{t('fleetManifest.selectedCount', { count: selectedImos.length })}</span></div>
+    <div className="panel-heading"><div><h2>{t('fleetManifest.title')}</h2></div><span className="panel-status">{t('fleetManifest.selectedCount', { count: selectedImos.length })}</span></div>
     <button className="manifest-toggle" type="button" aria-expanded={expanded} aria-controls="vessel-roster" onClick={() => setExpanded((value) => !value)}><span>{expanded ? t('fleetManifest.hideRoster') : t('fleetManifest.showRoster')}</span><ChevronDown size={16} aria-hidden="true" /></button>
     {expanded ? <><p className="manifest-note">{t('fleetManifest.note')}</p><div id="vessel-roster" className="vessel-roster">{vessels.map((vessel) => {
       const selected = selectedImos.includes(vessel.imo); const color = vesselColor(vessel.imo); const used = vessels.filter((other) => other.imo !== vessel.imo).map((other) => vesselColor(other.imo))

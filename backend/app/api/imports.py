@@ -2,13 +2,14 @@ from collections.abc import Iterator
 from typing import Annotated, cast
 
 from fastapi import APIRouter, Depends, File, Request, Response, UploadFile, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.schemas.imports import (
     CommitImportRequest,
     CommitImportResponse,
     ImportPreviewResponse,
+    ImportProgressResponse,
     ImportValidationResponse,
     StartImportResponse,
     UpdateMappingRequest,
@@ -19,6 +20,7 @@ from app.services.import_service import (
     cancel_import_session,
     commit_import_session,
     create_import_session,
+    import_progress,
     preview_import_session,
     update_mapping,
     validate_import_session,
@@ -40,6 +42,10 @@ def get_runtime_settings(request: Request) -> Settings:
 
 def get_fleet_cache(request: Request) -> FleetCacheManager:
     return cast(FleetCacheManager, request.app.state.fleet_cache)
+
+
+def get_session_factory(request: Request) -> sessionmaker[Session]:
+    return cast(sessionmaker[Session], request.app.state.session_factory)
 
 
 @router.post("", response_model=StartImportResponse, status_code=status.HTTP_201_CREATED)
@@ -86,10 +92,25 @@ def commit_import(
     session: Annotated[Session, Depends(get_database_session)],
     settings: Annotated[Settings, Depends(get_runtime_settings)],
     fleet_cache: Annotated[FleetCacheManager, Depends(get_fleet_cache)],
+    session_factory: Annotated[sessionmaker[Session], Depends(get_session_factory)],
 ) -> CommitImportResponse:
     return commit_import_session(
-        session, settings.imports_directory, session_id, payload, fleet_cache, settings
+        session,
+        settings.imports_directory,
+        session_id,
+        payload,
+        fleet_cache,
+        settings,
+        session_factory,
     )
+
+
+@router.get("/{session_id}/progress", response_model=ImportProgressResponse)
+def get_import_progress(
+    session_id: str,
+    session: Annotated[Session, Depends(get_database_session)],
+) -> ImportProgressResponse:
+    return import_progress(session, session_id)
 
 
 @router.delete("/{session_id}", status_code=status.HTTP_204_NO_CONTENT)

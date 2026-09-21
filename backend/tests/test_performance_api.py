@@ -83,7 +83,7 @@ def test_enriched_import_applies_current_correction(
     monkeypatch.setattr(
         import_service,
         "fetch_environment_for_samples",
-        lambda samples, settings: _observations(),
+        lambda samples, settings, on_progress=None: _observations(),
     )
     import_vessel(client, imo="IMO9002")
 
@@ -101,7 +101,7 @@ def test_enriched_import_applies_current_correction(
 def test_weather_failure_does_not_break_telemetry_import(
     client: TestClient, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    def fail(samples, settings):
+    def fail(samples, settings, on_progress=None):
         raise httpx.ConnectError("provider down")
 
     monkeypatch.setattr(import_service, "fetch_environment_for_samples", fail)

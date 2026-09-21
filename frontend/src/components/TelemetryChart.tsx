@@ -15,7 +15,7 @@ echarts.use([BarChart, LineChart, DataZoomComponent, GridComponent, LegendCompon
 
 type ChartType = 'line' | 'bar'
 type ChartOption = ComposeOption<BarSeriesOption | LineSeriesOption | DataZoomComponentOption | GridComponentOption | LegendComponentOption | TooltipComponentOption>
-type Props = { series: Series[]; loading: boolean; error: boolean; colorVersion: number; dateRange: { start: string; end: string }; replayTimestamp?: string; title?: string; chartType?: ChartType; onRetry: () => void }
+type Props = { series: Series[]; loading: boolean; error: boolean; colorVersion: number; dateRange: { start: string; end: string }; replayTimestamp?: string; chartType?: ChartType; onRetry: () => void }
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' })
 const numberFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 })
@@ -30,7 +30,7 @@ function selectedDateLabel({ start, end }: Props['dateRange'], t: (key: string, 
   return t('chart.allDates')
 }
 
-export function TelemetryChart({ series, loading, error, colorVersion, dateRange, replayTimestamp, title = 'Telemetry trend', chartType = 'line', onRetry }: Props) {
+export function TelemetryChart({ series, loading, error, colorVersion, dateRange, replayTimestamp, chartType = 'line', onRetry }: Props) {
   const { t } = useTranslation()
   const chartElement = useRef<HTMLDivElement>(null)
   const chartRef = useRef<echarts.ECharts | null>(null)
@@ -44,6 +44,8 @@ export function TelemetryChart({ series, loading, error, colorVersion, dateRange
       }))
     : series
   const displayMetric = displaySeries[0]?.metric
+  const chartTypeLabel = chartType === 'bar' ? t('chart.typeBar') : t('chart.typeLine')
+  const heading = displayMetric ? `${chartTypeLabel} — ${displayMetric.label}` : chartTypeLabel
   const validPointCount = displaySeries.reduce((count, entry) => count + entry.points.filter((point) => point.value !== null && !point.missing).length, 0)
 
   useEffect(() => {
@@ -100,7 +102,7 @@ export function TelemetryChart({ series, loading, error, colorVersion, dateRange
   }, [displaySeries, displayMetric, validPointCount, colorVersion, dateRange.start, dateRange.end, replayTimestamp, chartType, t])
 
   return <section className="telemetry-chart" aria-labelledby="telemetry-chart-title" aria-busy={loading}>
-    <div className="chart-heading"><div><p className="eyebrow">03</p><h2 id="telemetry-chart-title">{title}</h2><p className="chart-date-range">{selectedDateLabel(dateRange, t)}</p></div>{displayMetric ? <div className="chart-metric"><strong>{displayMetric.label}</strong><span>{displayMetric.unit || t('chart.unitless')} · {t(`dashboard.${displayMetric.origin}`)} · {displaySeries.length} {t('chart.vessels', { count: displaySeries.length })}</span>{displayMetric.source_column ? <small>{t('dashboard.sourceColumn')}: {displayMetric.source_column}</small> : null}{displayMetric.formula ? <small>{t('dashboard.formula')}: {displayMetric.formula}</small> : null}{displayMetric.warning ? <small className="chart-warning">{displayMetric.warning}</small> : null}</div> : null}</div>
+    <div className="chart-heading"><div><h2 id="telemetry-chart-title">{heading}</h2><p className="chart-date-range">{selectedDateLabel(dateRange, t)}</p></div>{displayMetric ? <div className="chart-metric"><strong>{displayMetric.label}</strong><span>{displayMetric.unit || t('chart.unitless')} · {t(`dashboard.${displayMetric.origin}`)} · {displaySeries.length} {t('chart.vessels', { count: displaySeries.length })}</span>{displayMetric.source_column ? <small>{t('dashboard.sourceColumn')}: {displayMetric.source_column}</small> : null}{displayMetric.formula ? <small>{t('dashboard.formula')}: {displayMetric.formula}</small> : null}{displayMetric.warning ? <small className="chart-warning">{displayMetric.warning}</small> : null}</div> : null}</div>
     {loading ? <div className="chart-state" role="status">{t('dashboard.loadingTelemetry')}</div> : null}
     {!loading && error ? <div className="chart-state is-error" role="alert">{t('errors.telemetry')}<button type="button" className="text-button" onClick={onRetry}>{t('errors.retry')}</button></div> : null}
     {!loading && !error && !displaySeries.length ? <div className="chart-state" role="status">{t('dashboard.emptyTelemetry')}</div> : null}

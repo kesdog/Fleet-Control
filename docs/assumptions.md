@@ -34,6 +34,8 @@ These values are estimates, not sensor readings, and API metadata identifies the
 
 6. Enrichment runs at import commit time and never fails the import. When the provider is unavailable, environmental fields remain null and fuel falls back to the SOG-based estimate.
 
+7. The optional wind/wave fuel-impact estimate (toggled in the Voyage Performance panel) adds a linear penalty to the fuel rate: a headwind or head sea increases fuel, a following wind or sea reduces it. The along-heading component is computed from the provider direction (reported as the direction the field comes FROM) and scaled by `WEATHER_IMPACT_WIND_PER_KNOT` (default `0.005`/kn) and `WEATHER_IMPACT_WAVE_PER_METRE` (default `0.04`/m), clamped to a factor between `0.5` and `1.5`. This is a crude prototype estimate, not a validated resistance model.
+
 ## Missing Data
 
 Rows lacking timestamp, latitude, longitude, or SOG cannot form a valid navigation sample and are rejected during validation. Optional navigation fields and motion metrics remain absent when not supplied; the cache records them in `missing_fields`. No interpolation, forward fill, or synthetic position/speed generation occurs.

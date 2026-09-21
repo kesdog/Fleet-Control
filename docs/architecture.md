@@ -30,7 +30,7 @@ CSV files remain temporary until an import session validates successfully. The i
 2. Requires explicit confirmation for ambiguous speed units.
 3. Converts speed to knots.
 4. Merges GPS and motion files by timestamp, never row position.
-5. Enriches each sample with Open-Meteo historical wind, wave, and ocean-current data (grouped by day and a 0.1° grid, matched to the nearest hour).
+5. Enriches each sample with Open-Meteo historical wind, wave, and ocean-current data (grouped by day and a 0.25° grid, matched to the nearest hour). Each vessel day sends exactly one batched weather request and one batched marine request; Open-Meteo counts each coordinate in those batches toward its rate limit, so requests are throttled and retried on a 429 response.
 6. Derives Speed Through Water, RPM, and fuel estimates from SOG plus the current projection.
 7. Writes vessel data, samples, environmental samples, metric definitions, and import status in one SQLite transaction.
 

@@ -8,6 +8,7 @@ class ImportStatus(StrEnum):
     INSPECTED = "INSPECTED"
     MAPPED = "MAPPED"
     VALIDATED = "VALIDATED"
+    ENRICHING = "ENRICHING"
     COMMITTED = "COMMITTED"
     FAILED = "FAILED"
     CANCELLED = "CANCELLED"
@@ -103,3 +104,11 @@ class CommitImportResponse(BaseModel):
     status: ImportStatus
     imo: str
     samples_imported: int
+
+
+class ImportProgressResponse(BaseModel):
+    session_id: str
+    status: ImportStatus
+    imo: str | None
+    enrichment_days_completed: int
+    enrichment_days_total: int

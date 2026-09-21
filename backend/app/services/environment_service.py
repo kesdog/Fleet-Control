@@ -1,4 +1,6 @@
 import logging
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Any
@@ -10,7 +12,29 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 KMH_TO_KNOTS = 0.539956803
-SPATIAL_GRID_DEGREES = 0.1
+SPATIAL_GRID_DEGREES = 0.25
+
+# Open-Meteo's free tier allows ~600 "locations" (coordinates) per minute per API.
+# Multi-coordinate requests count once per coordinate, so we throttle each endpoint
+# separately and retry with a one-minute pause when the limit is still hit.
+RATE_LIMIT_LOCATIONS_PER_MINUTE = 550.0
+_rate_state: dict[str, dict[str, float]] = {}
+
+
+def _throttle(namespace: str, location_count: int) -> None:
+    if location_count <= 0:
+        return
+    state = _rate_state.setdefault(namespace, {"start": 0.0, "count": 0.0})
+    now = time.monotonic()
+    if now - state["start"] >= 60.0:
+        state["start"] = now
+        state["count"] = 0.0
+    if state["count"] + location_count > RATE_LIMIT_LOCATIONS_PER_MINUTE:
+        time.sleep(60.0 - (now - state["start"]) + 0.2)
+        now = time.monotonic()
+        state["start"] = now
+        state["count"] = 0.0
+    state["count"] += location_count
 
 WEATHER_VARIABLES = ("wind_speed_10m", "wind_direction_10m")
 MARINE_VARIABLES = (
@@ -78,7 +102,10 @@ def get_environment(
 
 
 def fetch_environment_for_samples(
-    samples: tuple[Any, ...], settings: Settings, client: httpx.Client | None = None
+    samples: tuple[Any, ...],
+    settings: Settings,
+    client: httpx.Client | None = None,
+    on_progress: Callable[[int, int], None] | None = None,
 ) -> dict[datetime, EnvironmentalObservation]:
     """Enrich a batch of samples, batching all coordinates of a day into one request."""
     if not settings.environment_enrichment_enabled:
@@ -98,8 +125,11 @@ def fetch_environment_for_samples(
         by_day.setdefault(timestamp.date(), {}).setdefault(coordinate, []).append(sample)
 
     observations: dict[datetime, EnvironmentalObservation] = {}
+    total_days = len(by_day)
+    if on_progress is not None:
+        on_progress(0, total_days)
     try:
-        for day, groups in by_day.items():
+        for completed_days, (day, groups) in enumerate(by_day.items(), start=1):
             coordinates = list(groups.keys())
             try:
                 cells = _fetch_day(active_client, settings, day, coordinates)
@@ -109,6 +139,8 @@ def fetch_environment_for_samples(
             for coordinate, cell in zip(coordinates, cells, strict=True):
                 for sample in groups[coordinate]:
                     observations[sample.timestamp] = _match_observation(cell, sample.timestamp)
+            if on_progress is not None:
+                on_progress(completed_days, total_days)
     finally:
         if client is None:
             active_client.close()
@@ -142,6 +174,7 @@ def _fetch_day(
     """Fetch one day of provider data for many coordinates in two batched requests."""
     latitudes = ",".join(str(latitude) for latitude, _ in coordinates)
     longitudes = ",".join(str(longitude) for _, longitude in coordinates)
+    _throttle("weather", len(coordinates))
     weather = _get_payload(
         client,
         settings.open_meteo_weather_url,
@@ -154,6 +187,7 @@ def _fetch_day(
             "timezone": "GMT",
         },
     )
+    _throttle("marine", len(coordinates))
     marine = _get_payload(
         client,
         settings.open_meteo_marine_url,
@@ -186,9 +220,14 @@ def _as_list(payload: Any) -> list[Any]:
 
 
 def _get_payload(client: httpx.Client, url: str, params: dict[str, Any]) -> Any:
-    response = client.get(url, params=params)
-    response.raise_for_status()
-    return response.json()
+    for attempt in range(4):
+        response = client.get(url, params=params)
+        if response.status_code == 429 and attempt < 3:
+            time.sleep(61)
+            continue
+        response.raise_for_status()
+        return response.json()
+    raise RuntimeError("Open-Meteo rate limit persisted across retries.")
 
 
 def _combine_responses(

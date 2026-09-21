@@ -106,3 +106,6 @@ class ImportSession(Base):
     source_files: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     detected_mapping: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     validation_result: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    import_imo: Mapped[str | None] = mapped_column(String(32))
+    enrichment_days_completed: Mapped[int] = mapped_column(default=0)
+    enrichment_days_total: Mapped[int] = mapped_column(default=0)

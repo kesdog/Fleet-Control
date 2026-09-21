@@ -78,6 +78,23 @@ def test_fetch_batches_and_matches_nearest_hour() -> None:
     assert observations[samples[0].timestamp].wind_speed_knots == pytest.approx(36.0 * 0.539956803)
 
 
+def test_fetch_reports_completed_calendar_days() -> None:
+    samples = (
+        _SampleLike(datetime(2026, 3, 1, 0, 10), 32.51, -79.41),
+        _SampleLike(datetime(2026, 3, 2, 0, 10), 32.52, -79.42),
+    )
+    progress: list[tuple[int, int]] = []
+
+    fetch_environment_for_samples(
+        samples,
+        Settings(),
+        _mock_client(),
+        on_progress=lambda completed, total: progress.append((completed, total)),
+    )
+
+    assert progress == [(0, 2), (1, 2), (2, 2)]
+
+
 def test_disabled_enrichment_returns_no_observations() -> None:
     settings = Settings(environment_enrichment_enabled=False)
     samples = (_SampleLike(datetime(2026, 3, 1, 0, 10), 32.5, -79.4),)

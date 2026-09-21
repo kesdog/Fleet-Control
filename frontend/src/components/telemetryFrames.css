@@ -10,3 +10,20 @@
 .day-summary td:first-child {
   font-weight: 700;
 }
+
+.route-filters summary {
+  list-style: none;
+}
+
+.route-filters summary::-webkit-details-marker {
+  display: none;
+}
+
+.route-filters-arrow {
+  flex-shrink: 0;
+  transition: transform .18s ease;
+}
+
+.route-filters[open] .route-filters-arrow {
+  transform: rotate(90deg);
+}

@@ -1,0 +1,9 @@
+import { Pause, Play, SkipBack, SkipForward } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+
+export type ReplayControlsProps = { min: number; max: number; value: number; onChange: (value: number) => void; step?: number; label?: string; onGoToTelemetry?: () => void; playing: boolean; onPlay: () => void; onPause: () => void; onPlayReverse: () => void; onPrevious: () => void; onNext: () => void }
+
+export function ReplayControls({ replay }: { replay: ReplayControlsProps }) {
+  const { t } = useTranslation()
+  return <label className="replay-slider" aria-label={replay.label ?? 'Replay position'}><span>{replay.label ?? 'Replay'}</span><input type="range" min={replay.min} max={replay.max} step={replay.step ?? 1} value={replay.value} onChange={(event) => replay.onChange(Number(event.target.value))} /><div className="replay-transport"><button type="button" aria-label={t('playback.previousFrame')} title={t('playback.previousFrame')} onClick={replay.onPrevious}><SkipBack size={14} /></button><button type="button" aria-label={t('playback.reversePlay')} title={t('playback.reversePlay')} onClick={replay.onPlayReverse}><Play size={14} style={{ transform: 'scaleX(-1)' }} /></button><button type="button" aria-label={replay.playing ? t('playback.pauseReplay') : t('playback.playReplay')} title={replay.playing ? t('playback.pauseReplay') : t('playback.playReplay')} onClick={replay.playing ? replay.onPause : replay.onPlay}>{replay.playing ? <Pause size={14} /> : <Play size={14} />}</button><button type="button" aria-label={t('playback.nextFrame')} title={t('playback.nextFrame')} onClick={replay.onNext}><SkipForward size={14} /></button></div>{replay.onGoToTelemetry ? <button type="button" onClick={replay.onGoToTelemetry}>{t('playback.goToTelemetry')}</button> : null}</label>
+}

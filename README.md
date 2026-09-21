@@ -2,9 +2,9 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.17.0
+## Version 0.18.0
 
-This milestone adds historical weather/ocean enrichment, current-corrected Speed Through Water (STW), and voyage fuel performance on top of the existing telemetry import and review workflow. v0.17.0 extends v0.16.0's English/French operations frontend with an environmental data model, STW-aware fuel estimates, and a voyage performance panel:
+This milestone keeps the v0.17.0 environmental enrichment and voyage-performance capabilities while making the final prototype easier to inspect and maintain. v0.18.0 separates dashboard orchestration, map layers, and import-stage presentation, and adds metric-shaded vessel routes with per-vessel legends:
 
 - FastAPI application with a health endpoint.
 - SQLite database initialized automatically at startup.
@@ -46,6 +46,9 @@ This milestone adds historical weather/ocean enrichment, current-corrected Speed
 - Voyage fuel, cost, distance, and efficiency aggregation via `GET /api/vessels/{imo}/performance`.
 - Per-sample environmental series via `GET /api/vessels/{imo}/environment`.
 - A compact Voyage Performance panel and environmental metrics in the telemetry-frame table.
+- Focused dashboard hooks for fleet selection, telemetry queries, replay, and notifications.
+- Separated raster, route, control, replay, and legend map components with metric-shaded routes.
+- Distinct upload, detection, mapping, validation, and review import-stage components.
 
 ## Run the frontend
 
@@ -65,7 +68,9 @@ Frontend structure:
 
 - `frontend/src/api/client.ts`: typed API entry points.
 - `frontend/src/components/FleetControls.tsx`: shared vessel, date, and metric filters.
-- `frontend/src/components/VesselMap.tsx`: raster map lifecycle, canvas telemetry rendering, and map controls.
+- `frontend/src/components/map/`: raster map lifecycle, route rendering, controls, replay controls, and legends.
+- `frontend/src/components/import/`: presentation components for each import wizard stage.
+- `frontend/src/hooks/`: dashboard selection, query, replay, and notification state.
 - `frontend/src/components/TelemetryChart.tsx`: ECharts time-series view with provenance, range controls, and the shared replay mark line.
 - `frontend/src/components/VesselDetails.tsx`: backend-provided vessel and metric provenance.
 - `frontend/src/i18n.ts`: English/French resources and persisted language selection.

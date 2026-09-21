@@ -41,6 +41,7 @@ export type ImportFileMapping = { semantic_fields: Record<string, string>; unit_
 export type ImportMapping = Record<string, ImportFileMapping>
 export type ImportIssue = { severity: 'error' | 'warning' | 'information'; code: string; message: string; file: string | null; column: string | null; row_number: number | null }
 export type ImportValidation = { session_id: string; status: string; issues: ImportIssue[]; normalized_columns: Record<string, string[]>; estimated_metrics: string[]; rows_accepted: number; rows_rejected: number }
+export type ImportProgress = { session_id: string; status: 'VALIDATED' | 'ENRICHING' | 'COMMITTED' | 'FAILED'; imo: string | null; enrichment_days_completed: number; enrichment_days_total: number }
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { Accept: 'application/json' } })
@@ -135,6 +136,10 @@ export async function commitImport(sessionId: string, imo: string, name: string,
   const response = await fetch(`/api/imports/${encodeURIComponent(sessionId)}/commit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imo, name: name || null, mode }) })
   if (!response.ok) throw new Error(await responseMessage(response))
   return response.json() as Promise<{ imo: string; samples_imported: number }>
+}
+
+export function getImportProgress(sessionId: string) {
+  return getJson<ImportProgress>(`/api/imports/${encodeURIComponent(sessionId)}/progress`)
 }
 
 export async function cancelImport(sessionId: string) {

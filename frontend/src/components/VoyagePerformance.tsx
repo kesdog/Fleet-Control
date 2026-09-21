@@ -63,7 +63,7 @@ export function VoyagePerformance({ entries, loading, error, onRetry }: VoyagePe
 
   return <section className="voyage-performance" aria-label={t('performance.title')}>
     <div className="panel-heading">
-      <div><p className="eyebrow">05</p><h2>{t('performance.title')}</h2></div>
+      <div><h2>{t('performance.title')}</h2></div>
       <div className="panel-heading-actions">
         <span className="panel-status">{t('performance.vessels', { count: entries.length })}</span>
         <label className="weather-toggle"><input type="checkbox" checked={showWeatherImpact} onChange={(event) => setShowWeatherImpact(event.target.checked)} />{t('performance.estimateWeather')}</label>

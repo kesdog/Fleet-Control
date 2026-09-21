@@ -57,6 +57,15 @@ def test_validated_import_commits_normalized_timestamp_joined_data(client: TestC
 
     assert committed.status_code == 200
     assert committed.json()["samples_imported"] == 2
+    progress = client.get(f"/api/imports/{session_id}/progress")
+    assert progress.status_code == 200
+    assert progress.json() == {
+        "session_id": session_id,
+        "status": "COMMITTED",
+        "imo": "IMO1001",
+        "enrichment_days_completed": 0,
+        "enrichment_days_total": 0,
+    }
     with client.app.state.session_factory() as session:
         vessel = session.scalar(select(Vessel).where(Vessel.imo == "IMO1001"))
         assert vessel is not None

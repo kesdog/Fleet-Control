@@ -1,3 +1,4 @@
+import { ChevronRight } from 'lucide-react'
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { TelemetryRecord } from '../api/client'
@@ -32,8 +33,8 @@ export function TelemetryFrames({ vessels = [], focusedImo, selectedTimestamp, o
   useEffect(() => { if (goToTelemetryRequest) selectedRowRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }) }, [goToTelemetryRequest, activeExpanded])
 
   return <section className="telemetry-frames" aria-label={t('telemetryFrames.label')}>
-    <div className="frames-heading"><div><p className="eyebrow">04</p><h2>{t('telemetryFrames.title')}</h2></div><span>{t('telemetryFrames.summary', { count: vessels.length, days: summaries.length })}</span></div>
-    <details className="route-filters"><summary>{t('telemetryFrames.routeFilters')}</summary><div><label>{t('telemetryFrames.start')} <input type="date" value={routeStart} onChange={(event) => onRouteStartChange(event.target.value)} /></label><label>{t('telemetryFrames.end')} <input type="date" value={routeEnd} onChange={(event) => onRouteEndChange(event.target.value)} /></label></div></details>
+    <div className="frames-heading"><div><h2>{t('telemetryFrames.title')}</h2></div><span>{t('telemetryFrames.summary', { count: vessels.length, days: summaries.length })}</span></div>
+    <details className="route-filters"><summary>{t('telemetryFrames.routeFilters')}<ChevronRight className="route-filters-arrow" size={16} aria-hidden="true" /></summary><div><label>{t('telemetryFrames.start')} <input type="date" value={routeStart} onChange={(event) => onRouteStartChange(event.target.value)} /></label><label>{t('telemetryFrames.end')} <input type="date" value={routeEnd} onChange={(event) => onRouteEndChange(event.target.value)} /></label></div></details>
     <div className="frame-pagination"><button type="button" disabled={dates.length <= (page + 1) * 30} onClick={() => setPage((value) => value + 1)}>{t('telemetryFrames.older')}</button><span>{t('telemetryFrames.rangeLabel', { start: pageDates.at(-1), end: pageDates[0] })}</span><button type="button" disabled={!page} onClick={() => setPage((value) => Math.max(0, value - 1))}>{t('telemetryFrames.newer')}</button></div>
     <div className="frame-table-wrap"><table><thead><tr><th>{t('telemetryFrames.vessel')}</th><th>{t('telemetryFrames.date')}</th><th>{t('telemetryFrames.frames')}</th><th>{t('telemetryFrames.firstPosition')}</th><th>{t('telemetryFrames.lastPosition')}</th><th>{t('telemetryFrames.distance')}</th><th>{t('telemetryFrames.avgSog')}</th></tr></thead><tbody>
       {days.map((day) => { const key = `${day.imo}:${day.date}`; const first = day.records[0]; const last = day.records.at(-1)!; const focusedDay = day.imo === focusedImo && day.date === selectedDay; return <Fragment key={key}>

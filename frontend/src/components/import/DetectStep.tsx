@@ -1,0 +1,9 @@
+import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
+import type { ImportPreview } from '../../api/client'
+import { Messages } from './ImportMessages'
+
+export function DetectStep({ preview, onBack, onContinue }: { preview: ImportPreview; onBack: () => void; onContinue: () => void }) {
+  const { t } = useTranslation()
+  return <><div className="import-stage-heading"><h2>{t('import.stageDetect')}</h2><p>{t('import.detectDescription')}</p></div>{preview.files.map((file) => <article className="import-file-preview" key={file.filename}><div className="import-file-heading"><div><h3>{file.filename}</h3><p>{t('import.rows', { count: file.row_count })}{file.timestamp_range ? ` | ${file.timestamp_range[0]} to ${file.timestamp_range[1]}` : ''}</p></div><span>{t('import.columns', { count: file.source_columns.length })}</span></div><Messages heading={t('import.inspectionWarnings')} messages={file.warnings} tone="warning" /><div className="import-column-tags">{file.columns.map((column) => <span key={column.source_column} className={column.requires_unit_mapping ? 'needs-confirmation' : ''}>{column.source_column}{column.semantic_field ? ` -> ${column.semantic_field}` : ` -> ${t('import.metric')}`}</span>)}</div><details><summary>{t('import.previewRows')}</summary><div className="import-table-wrap"><table><thead><tr>{file.source_columns.map((column) => <th key={column}>{column}</th>)}</tr></thead><tbody>{file.sample_rows.map((row, index) => <tr key={index}>{file.source_columns.map((column) => <td key={column}>{row[column]}</td>)}</tr>)}</tbody></table></div></details></article>)}<div className="import-stage-actions"><button type="button" className="import-secondary" onClick={onBack}><ArrowLeft size={16} />{t('import.back')}</button><button type="button" className="import-primary" onClick={onContinue}>{t('import.confirmMappings')} <ArrowRight size={16} /></button></div></>
+}

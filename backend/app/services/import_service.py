@@ -3,11 +3,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from shutil import rmtree
+from threading import Thread
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import delete, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.db.models import EnvironmentalSample, ImportSession, Sample, Vessel, VesselMetric
@@ -21,6 +22,7 @@ from app.schemas.imports import (
     FileMapping,
     FilePreview,
     ImportPreviewResponse,
+    ImportProgressResponse,
     ImportStatus,
     ImportValidationResponse,
     StartImportResponse,
@@ -167,6 +169,7 @@ def commit_import_session(
     request: CommitImportRequest,
     fleet_cache: FleetCacheManager,
     settings: Settings,
+    session_factory: sessionmaker[Session],
 ) -> CommitImportResponse:
     import_session = _get_active_session(session, session_id)
     if import_session.status != ImportStatus.VALIDATED.value:
@@ -185,26 +188,40 @@ def commit_import_session(
             ),
         )
 
-    # Enrichment runs outside any transaction so provider latency and outages never
-    # hold the SQLite write lock; telemetry still commits when weather is unavailable.
-    try:
-        observations = fetch_environment_for_samples(normalized.samples, settings)
-    except Exception:  # noqa: BLE001 - enrichment must never fail a telemetry import.
-        observations = {}
-    enriched = [
-        _enrich_sample(sample, observations.get(sample.timestamp), settings)
-        for sample in normalized.samples
-    ]
+    existing_vessel = session.scalar(select(Vessel).where(Vessel.imo == request.imo))
+    if existing_vessel is not None and request.mode.value == "CREATE":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Vessel {request.imo} already exists; use REPLACE to overwrite it.",
+        )
+
+    # Commit telemetry first; environmental data arrives asynchronously in production.
+    import_session.status = (
+        ImportStatus.ENRICHING.value
+        if settings.environment_enrichment_enabled
+        else ImportStatus.COMMITTED.value
+    )
+    import_session.import_imo = request.imo
+    import_session.enrichment_days_completed = 0
+    import_session.enrichment_days_total = 0
+    session.commit()
+
+    if settings.environment_enrichment_enabled:
+        enriched = [_enrich_sample(sample, None, settings) for sample in normalized.samples]
+    else:
+        try:
+            observations = fetch_environment_for_samples(normalized.samples, settings)
+        except Exception:  # noqa: BLE001 - enrichment must never fail a telemetry import.
+            observations = {}
+        enriched = [
+            _enrich_sample(sample, observations.get(sample.timestamp), settings)
+            for sample in normalized.samples
+        ]
 
     # End the read transaction before opening the explicit all-or-nothing write transaction.
     session.commit()
     with session.begin():
         existing_vessel = session.scalar(select(Vessel).where(Vessel.imo == request.imo))
-        if existing_vessel is not None and request.mode.value == "CREATE":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Vessel {request.imo} already exists; use REPLACE to overwrite it.",
-            )
         if existing_vessel is not None:
             # Remove dependent records first so replacement works with SQLite foreign keys enabled.
             sample_ids = session.scalars(
@@ -265,15 +282,94 @@ def commit_import_session(
         committed_session = session.get(ImportSession, session_id)
         if committed_session is None:
             raise RuntimeError("Import session disappeared during commit.")
-        committed_session.status = ImportStatus.COMMITTED.value
+        committed_session.status = import_session.status
 
     # Cache replacement happens strictly after SQLite commits, so failed writes cannot affect reads.
     fleet_cache.refresh_vessel(session, request.imo)
+    if settings.environment_enrichment_enabled:
+        Thread(
+            target=_enrich_committed_vessel,
+            args=(
+                session_factory,
+                session_id,
+                request.imo,
+                normalized.samples,
+                settings,
+                fleet_cache,
+            ),
+            daemon=True,
+        ).start()
     return CommitImportResponse(
         session_id=session_id,
-        status=ImportStatus.COMMITTED,
+        status=ImportStatus(import_session.status),
         imo=request.imo,
         samples_imported=len(normalized.samples),
+    )
+
+
+def _enrich_committed_vessel(
+    session_factory: sessionmaker[Session],
+    session_id: str,
+    imo: str,
+    normalized_samples: tuple[NormalizedSample, ...],
+    settings: Settings,
+    fleet_cache: FleetCacheManager,
+) -> None:
+    def update_progress(completed_days: int, total_days: int) -> None:
+        with session_factory() as progress_session:
+            import_session = progress_session.get(ImportSession, session_id)
+            if import_session is not None:
+                import_session.enrichment_days_completed = completed_days
+                import_session.enrichment_days_total = total_days
+                progress_session.commit()
+
+    try:
+        observations = fetch_environment_for_samples(
+            normalized_samples, settings, on_progress=update_progress
+        )
+    except Exception:  # noqa: BLE001 - telemetry remains available when enrichment fails.
+        observations = {}
+    enriched_by_timestamp = {
+        sample.timestamp: _enrich_sample(sample, observations.get(sample.timestamp), settings)
+        for sample in normalized_samples
+    }
+    with session_factory() as session:
+        vessel = session.scalar(select(Vessel).where(Vessel.imo == imo))
+        if vessel is None:
+            return
+        rows = session.execute(
+            select(Sample, EnvironmentalSample)
+            .join(EnvironmentalSample, EnvironmentalSample.sample_id == Sample.id)
+            .where(Sample.vessel_id == vessel.id)
+        ).all()
+        for sample, environmental in rows:
+            enriched = enriched_by_timestamp.get(sample.timestamp)
+            if enriched is None:
+                continue
+            sample.estimated_rpm = enriched.rpm
+            sample.estimated_fuel_tpd = enriched.fuel_tpd
+            replacement = _environmental_sample(sample, enriched)
+            for field in (
+                "wind_speed_knots", "wind_direction_deg", "wave_height_m", "wave_direction_deg",
+                "wave_period_s", "current_speed_knots", "current_direction_deg", "weather_factor",
+                "current_along_heading_knots", "stw_knots", "stw_source",
+            ):
+                setattr(environmental, field, getattr(replacement, field))
+        import_session = session.get(ImportSession, session_id)
+        if import_session is not None:
+            import_session.status = ImportStatus.COMMITTED.value
+        session.commit()
+        fleet_cache.refresh_vessel(session, imo)
+
+
+def import_progress(session: Session, session_id: str) -> ImportProgressResponse:
+    import_session = _get_active_session(session, session_id)
+    return ImportProgressResponse(
+        session_id=import_session.id,
+        status=ImportStatus(import_session.status),
+        imo=import_session.import_imo,
+        enrichment_days_completed=import_session.enrichment_days_completed,
+        enrichment_days_total=import_session.enrichment_days_total,
     )
 
 
