@@ -870,6 +870,8 @@ Features:
 - final confirmation.
 - success state.
 - refresh fleet list after import.
+- native map-only full-screen control.
+- wheel zoom is locked to the map only while that full-screen mode is active.
 
 ### Acceptance
 

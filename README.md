@@ -2,7 +2,7 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.14.0
+## Version 0.15.0
 
 This milestone provides the Python backend, deterministic CSV inspection, and an operations frontend for map, replay, and chart telemetry review:
 
@@ -32,6 +32,9 @@ This milestone provides the Python backend, deterministic CSV inspection, and an
 - A collapsible fleet manifest to keep the map workspace focused during review.
 - Synchronized replay cursors in every chart, a current-frame navigation readout, and a metric picker that adds charts below the final trend.
 - Modal workspace settings with map-scale units and the single backend API status display.
+- Focused staged import view covering upload, detection preview, column/unit mapping, validation, review, cancellation, and explicit vessel replacement.
+- Native map-only fullscreen with fullscreen-only wheel zoom lock and application success/error notifications.
+- Configurable 2-12 replay frames per day with cadence-aware sampling and a guaranteed final telemetry frame.
 
 ## Run the frontend
 

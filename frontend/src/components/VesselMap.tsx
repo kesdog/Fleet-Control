@@ -1,5 +1,5 @@
-import { memo, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Pause, Play, RotateCcw, SkipBack, SkipForward, ZoomIn, ZoomOut } from 'lucide-react'
+import { memo, type PointerEvent as ReactPointerEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Maximize, Minimize, Pause, Play, RotateCcw, SkipBack, SkipForward, ZoomIn, ZoomOut } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TelemetryRecord } from '../api/client'
 import { dragRasterCamera, mercatorY, projectRasterPoint, rasterTileZoom } from '../map/rasterProjection'
@@ -31,7 +31,8 @@ type ReplaySliderProps = {
   onGoToTelemetry?: () => void
   playing: boolean
   speed: number
-  onTogglePlay: () => void
+  onPlay: () => void
+  onPause: () => void
   onPlayReverse: () => void
   onPrevious: () => void
   onNext: () => void
@@ -202,11 +203,12 @@ const FrameOverlay = memo(function FrameOverlay({ center, viewport, vessels, foc
   </>
 })
 
-function MapControls({ onReset, onZoomIn, onZoomOut, labels }: { onReset: () => void; onZoomIn: () => void; onZoomOut: () => void; labels: { reset: string; zoomIn: string; zoomOut: string } }) {
+function MapControls({ onReset, onZoomIn, onZoomOut, onFullscreen, fullscreen, fullscreenAvailable, labels }: { onReset: () => void; onZoomIn: () => void; onZoomOut: () => void; onFullscreen: () => void; fullscreen: boolean; fullscreenAvailable: boolean; labels: { reset: string; zoomIn: string; zoomOut: string; enterFullscreen: string; exitFullscreen: string } }) {
   return <div className="map-actions">
     <button type="button" aria-label={labels.reset} title={labels.reset} onClick={onReset}><RotateCcw aria-hidden="true" size={16} /></button>
     <button type="button" aria-label={labels.zoomIn} title={labels.zoomIn} onClick={onZoomIn}><ZoomIn aria-hidden="true" size={16} /></button>
     <button type="button" aria-label={labels.zoomOut} title={labels.zoomOut} onClick={onZoomOut}><ZoomOut aria-hidden="true" size={16} /></button>
+    {fullscreenAvailable ? <button type="button" aria-label={fullscreen ? labels.exitFullscreen : labels.enterFullscreen} title={fullscreen ? labels.exitFullscreen : labels.enterFullscreen} onClick={onFullscreen}>{fullscreen ? <Minimize aria-hidden="true" size={16} /> : <Maximize aria-hidden="true" size={16} />}</button> : null}
   </div>
 }
 
@@ -228,7 +230,7 @@ function ReplaySlider({ replay }: { replay: ReplaySliderProps }) {
   return <label className="replay-slider" aria-label={replay.label ?? 'Replay position'}>
     <span>{replay.label ?? 'Replay'}</span>
     <input type="range" min={replay.min} max={replay.max} step={replay.step ?? 1} value={replay.value} onChange={(event) => replay.onChange(Number(event.target.value))} />
-    <div className="replay-transport"><button type="button" aria-label="Previous replay frame" title="Previous replay frame" onClick={replay.onPrevious}><SkipBack size={14} /></button><button type="button" aria-label="Reverse play" title="Reverse play" onClick={replay.onPlayReverse}><Play size={14} style={{ transform: 'scaleX(-1)' }} /></button><button type="button" aria-label={replay.playing ? 'Pause replay' : 'Play replay'} title={replay.playing ? 'Pause replay' : 'Play replay'} onClick={replay.onTogglePlay}>{replay.playing ? <Pause size={14} /> : <Play size={14} />}</button><button type="button" aria-label="Next replay frame" title="Next replay frame" onClick={replay.onNext}><SkipForward size={14} /></button></div>
+    <div className="replay-transport"><button type="button" aria-label="Previous replay frame" title="Previous replay frame" onClick={replay.onPrevious}><SkipBack size={14} /></button><button type="button" aria-label="Reverse play" title="Reverse play" onClick={replay.onPlayReverse}><Play size={14} style={{ transform: 'scaleX(-1)' }} /></button><button type="button" aria-label={replay.playing ? 'Pause replay' : 'Play replay'} title={replay.playing ? 'Pause replay' : 'Play replay'} onClick={replay.playing ? replay.onPause : replay.onPlay}>{replay.playing ? <Pause size={14} /> : <Play size={14} />}</button><button type="button" aria-label="Next replay frame" title="Next replay frame" onClick={replay.onNext}><SkipForward size={14} /></button></div>
     {replay.onGoToTelemetry ? <button type="button" onClick={replay.onGoToTelemetry}>Go to telemetry</button> : null}
   </label>
 }
@@ -247,6 +249,7 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
   const { t } = useTranslation()
   const mapCanvasRef = useRef<HTMLDivElement>(null)
   const panLayerRef = useRef<HTMLDivElement>(null)
+  const surfaceRef = useRef<HTMLDivElement>(null)
   const dragRef = useRef<SurfaceDrag | null>(null)
   const panFrameRef = useRef<number | null>(null)
   const wheelFrameRef = useRef<number | null>(null)
@@ -256,6 +259,8 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
   // This controlled raster camera is authoritative for both DOM tiles and SVG overlays.
   const [mapCenter, setMapCenter] = useState<MapCenter>(initialCamera)
   const [mapViewport, setMapViewport] = useState<MapViewport>({ width: 0, height: 0 })
+  const [fullscreen, setFullscreen] = useState(false)
+  const [fullscreenError, setFullscreenError] = useState('')
 
   useEffect(() => {
     const container = mapCanvasRef.current
@@ -270,6 +275,34 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
     observer.observe(container)
     return () => observer.disconnect()
   }, [])
+
+  useEffect(() => {
+    const syncFullscreen = () => setFullscreen(document.fullscreenElement === mapCanvasRef.current)
+    document.addEventListener('fullscreenchange', syncFullscreen)
+    return () => document.removeEventListener('fullscreenchange', syncFullscreen)
+  }, [])
+
+  useEffect(() => {
+    const surface = surfaceRef.current
+    if (!surface || !fullscreen) return
+    const zoom = (event: WheelEvent) => {
+      event.preventDefault()
+      wheelDeltaRef.current += event.deltaY
+      if (wheelFrameRef.current !== null) return
+      wheelFrameRef.current = requestAnimationFrame(() => {
+        wheelFrameRef.current = null
+        const delta = wheelDeltaRef.current
+        wheelDeltaRef.current = 0
+        const camera = cameraRef.current
+        const nextCamera = { ...camera, zoom: Math.max(1.5, Math.min(7, camera.zoom - delta / 400)) }
+        if (nextCamera.zoom === camera.zoom) return
+        cameraRef.current = nextCamera
+        setMapCenter(nextCamera)
+      })
+    }
+    surface.addEventListener('wheel', zoom, { passive: false })
+    return () => surface.removeEventListener('wheel', zoom)
+  }, [fullscreen])
 
   // Keep the authoritative camera in sync and swap a transient pan transform for
   // freshly projected tiles before the browser paints the committed camera.
@@ -376,19 +409,16 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId)
   }
 
-  const zoomSurface = (event: ReactWheelEvent<HTMLDivElement>) => {
-    wheelDeltaRef.current += event.deltaY
-    if (wheelFrameRef.current !== null) return
-    wheelFrameRef.current = requestAnimationFrame(() => {
-      wheelFrameRef.current = null
-      const delta = wheelDeltaRef.current
-      wheelDeltaRef.current = 0
-      const camera = cameraRef.current
-      const nextCamera = { ...camera, zoom: Math.max(1.5, Math.min(7, camera.zoom - delta / 400)) }
-      if (nextCamera.zoom === camera.zoom) return
-      cameraRef.current = nextCamera
-      setMapCenter(nextCamera)
-    })
+  const toggleFullscreen = async () => {
+    const canvas = mapCanvasRef.current
+    if (!canvas) return
+    setFullscreenError('')
+    try {
+      if (document.fullscreenElement === canvas) await document.exitFullscreen()
+      else await canvas.requestFullscreen({ navigationUI: 'hide' })
+    } catch {
+      setFullscreenError(t('map.fullscreenError'))
+    }
   }
 
   const filteredVessels = useMemo(
@@ -409,6 +439,7 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
         <FrameOverlay center={mapCenter} viewport={mapViewport} vessels={filteredVessels} focusedImo={focusedImo} selectedFrame={selectedFrame} replayTimestamp={replayTimestamp} colorVersion={colorVersion} />
       </div>
       <div
+        ref={surfaceRef}
         className="map-pan-surface"
         aria-label={t('map.canvasLabel')}
         onPointerDown={startSurfacePan}
@@ -416,17 +447,20 @@ export function VesselMap({ vesselTelemetry, focusedImo, selectedFrame, replayTi
         onPointerUp={(event) => finishSurfacePan(event, true)}
         onPointerCancel={(event) => finishSurfacePan(event, false)}
         onLostPointerCapture={(event) => finishSurfacePan(event, false)}
-        onWheel={zoomSurface}
       />
 
       {loading && !error ? <div className="map-overlay" role="status">{t('map.loading')}</div> : null}
       {error ? <div className="map-overlay map-error" role="alert"><p>{t('map.unavailable')}</p><button className="text-button" type="button" onClick={onRetry}>{t('errors.retry')}</button></div> : null}
+      {fullscreenError ? <div className="map-fullscreen-error" role="alert">{fullscreenError}</div> : null}
 
       <MapControls
-        labels={{ reset: t('map.reset'), zoomIn: t('map.zoomIn'), zoomOut: t('map.zoomOut') }}
+        labels={{ reset: t('map.reset'), zoomIn: t('map.zoomIn'), zoomOut: t('map.zoomOut'), enterFullscreen: t('map.enterFullscreen'), exitFullscreen: t('map.exitFullscreen') }}
         onReset={() => setMapCenter({ ...initialCamera })}
         onZoomIn={() => setMapCenter((camera) => ({ ...camera, zoom: Math.min(7, camera.zoom + 1) }))}
         onZoomOut={() => setMapCenter((camera) => ({ ...camera, zoom: Math.max(1.5, camera.zoom - 1) }))}
+        onFullscreen={() => void toggleFullscreen()}
+        fullscreen={fullscreen}
+        fullscreenAvailable={typeof document !== 'undefined' && document.fullscreenEnabled}
       />
        {replay ? <ReplaySlider replay={replay} /> : null}
        <CameraReadout center={mapCenter} />

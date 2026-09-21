@@ -29,12 +29,28 @@ export type Series = { imo: string; metric: Metric; start: string | null; end: s
 export type TelemetryRecord = { timestamp: string; latitude_deg: number; longitude_deg: number; sog_knots: number; course_deg: number | null; heading_deg: number | null; estimated_rpm: number; estimated_fuel_tpd: number; metrics: Record<string, number>; missing_fields: string[] }
 export type Telemetry = { imo: string; start: string | null; end: string | null; records: TelemetryRecord[] }
 export type ImportSession = { session_id: string; status: string; files: Array<{ filename: string; headers: string[]; delimiter: string; row_count: number; warnings: string[] }> }
-export type ImportValidation = { session_id: string; status: string; errors: string[]; warnings: string[]; rows_accepted: number; rows_rejected: number }
+export type ImportColumn = { source_column: string; semantic_field: string | null; detected_unit: string | null; requires_unit_mapping: boolean }
+export type ImportPreview = { session_id: string; status: string; files: Array<{ filename: string; source_columns: string[]; columns: ImportColumn[]; row_count: number; timestamp_range: [string, string] | null; null_counts: Record<string, number>; sample_rows: Array<Record<string, string>>; warnings: string[]; fields_requiring_confirmation: string[] }> }
+export type ImportFileMapping = { semantic_fields: Record<string, string>; unit_overrides: Record<string, string> }
+export type ImportMapping = Record<string, ImportFileMapping>
+export type ImportValidation = { session_id: string; status: string; errors: string[]; warnings: string[]; normalized_columns: Record<string, string[]>; estimated_metrics: string[]; rows_accepted: number; rows_rejected: number }
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { Accept: 'application/json' } })
-  if (!response.ok) throw new Error(`Request failed: ${response.status}`)
+  if (!response.ok) throw new Error(await responseMessage(response))
   return response.json() as Promise<T>
+}
+
+async function responseMessage(response: Response) {
+  const fallback = `Request failed: ${response.status}`
+  try {
+    const body = await response.json() as { detail?: string | Array<{ msg?: string }> }
+    if (typeof body.detail === 'string') return body.detail
+    if (Array.isArray(body.detail)) return body.detail.map((entry) => entry.msg).filter(Boolean).join(', ') || fallback
+  } catch {
+    // Non-JSON failures retain the concise HTTP fallback.
+  }
+  return fallback
 }
 
 // Use these typed functions from TanStack Query hooks instead of fetching inside display components.
@@ -70,18 +86,37 @@ export async function startImport(files: File[]) {
   const body = new FormData()
   files.forEach((file) => body.append('files', file))
   const response = await fetch('/api/imports', { method: 'POST', body })
-  if (!response.ok) throw new Error(`Import upload failed: ${response.status}`)
+  if (!response.ok) throw new Error(await responseMessage(response))
   return response.json() as Promise<ImportSession>
+}
+
+export function previewImport(sessionId: string) {
+  return getJson<ImportPreview>(`/api/imports/${encodeURIComponent(sessionId)}/preview`)
+}
+
+export async function updateImportMapping(sessionId: string, files: ImportMapping) {
+  const response = await fetch(`/api/imports/${encodeURIComponent(sessionId)}/mapping`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ files }),
+  })
+  if (!response.ok) throw new Error(await responseMessage(response))
+  return response.json() as Promise<{ session_id: string; status: string; mapping: ImportMapping }>
 }
 
 export async function validateImport(sessionId: string) {
   const response = await fetch(`/api/imports/${encodeURIComponent(sessionId)}/validate`, { method: 'POST' })
-  if (!response.ok) throw new Error(`Import validation failed: ${response.status}`)
+  if (!response.ok) throw new Error(await responseMessage(response))
   return response.json() as Promise<ImportValidation>
 }
 
-export async function commitImport(sessionId: string, imo: string, name: string) {
-  const response = await fetch(`/api/imports/${encodeURIComponent(sessionId)}/commit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imo, name: name || null, mode: 'CREATE' }) })
-  if (!response.ok) throw new Error(`Import commit failed: ${response.status}`)
+export async function commitImport(sessionId: string, imo: string, name: string, mode: 'CREATE' | 'REPLACE') {
+  const response = await fetch(`/api/imports/${encodeURIComponent(sessionId)}/commit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imo, name: name || null, mode }) })
+  if (!response.ok) throw new Error(await responseMessage(response))
   return response.json() as Promise<{ imo: string; samples_imported: number }>
+}
+
+export async function cancelImport(sessionId: string) {
+  const response = await fetch(`/api/imports/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
+  if (!response.ok) throw new Error(await responseMessage(response))
 }
