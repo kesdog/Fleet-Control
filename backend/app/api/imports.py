@@ -88,7 +88,7 @@ def commit_import(
     fleet_cache: Annotated[FleetCacheManager, Depends(get_fleet_cache)],
 ) -> CommitImportResponse:
     return commit_import_session(
-        session, settings.imports_directory, session_id, payload, fleet_cache
+        session, settings.imports_directory, session_id, payload, fleet_cache, settings
     )
 
 

@@ -8,6 +8,7 @@ def test_schema_initializes_independently(settings) -> None:
     try:
         initialize_database(engine)
         assert set(inspect(engine).get_table_names()) == {
+            "environmental_samples",
             "import_sessions",
             "samples",
             "vessel_metrics",

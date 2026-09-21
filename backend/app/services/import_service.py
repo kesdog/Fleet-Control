@@ -1,4 +1,5 @@
 from collections.abc import Iterable
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from shutil import rmtree
@@ -8,9 +9,11 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
-from app.db.models import ImportSession, Sample, Vessel, VesselMetric
+from app.config import Settings
+from app.db.models import EnvironmentalSample, ImportSession, Sample, Vessel, VesselMetric
 from app.importers.csv_reader import CsvInspection, CsvReadError, inspect_csv
-from app.importers.normalizer import NormalizedImport, normalize_import
+from app.importers.normalizer import NormalizedImport, NormalizedSample, normalize_import
+from app.importers.validator import IssueSeverity, ValidationIssue
 from app.schemas.imports import (
     ColumnPreview,
     CommitImportRequest,
@@ -24,8 +27,14 @@ from app.schemas.imports import (
     UpdateMappingRequest,
     UpdateMappingResponse,
     UploadedFileSummary,
+    ValidationIssueResponse,
+)
+from app.services.environment_service import (
+    EnvironmentalObservation,
+    fetch_environment_for_samples,
 )
 from app.services.fleet_cache import FleetCacheManager
+from app.services.performance_service import calculate_fuel_rate_tpd, calculate_rpm, derive_stw
 
 
 async def create_import_session(
@@ -143,7 +152,9 @@ def validate_import_session(
     response = _validation_response(session_id, normalized)
     import_session.validation_result = response.model_dump(mode="json")
     import_session.status = (
-        ImportStatus.VALIDATED.value if not normalized.errors else ImportStatus.FAILED.value
+        ImportStatus.VALIDATED.value
+        if not _has_blocking_errors(normalized)
+        else ImportStatus.FAILED.value
     )
     session.commit()
     return response
@@ -155,6 +166,7 @@ def commit_import_session(
     session_id: str,
     request: CommitImportRequest,
     fleet_cache: FleetCacheManager,
+    settings: Settings,
 ) -> CommitImportResponse:
     import_session = _get_active_session(session, session_id)
     if import_session.status != ImportStatus.VALIDATED.value:
@@ -163,11 +175,26 @@ def commit_import_session(
             detail="Import session must pass validation before commit.",
         )
     normalized = _normalize_session(import_session, imports_directory)
-    if normalized.errors:
+    if _has_blocking_errors(normalized):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=list(normalized.errors),
+            detail="; ".join(
+                issue.message
+                for issue in normalized.issues
+                if issue.severity is IssueSeverity.ERROR
+            ),
         )
+
+    # Enrichment runs outside any transaction so provider latency and outages never
+    # hold the SQLite write lock; telemetry still commits when weather is unavailable.
+    try:
+        observations = fetch_environment_for_samples(normalized.samples, settings)
+    except Exception:  # noqa: BLE001 - enrichment must never fail a telemetry import.
+        observations = {}
+    enriched = [
+        _enrich_sample(sample, observations.get(sample.timestamp), settings)
+        for sample in normalized.samples
+    ]
 
     # End the read transaction before opening the explicit all-or-nothing write transaction.
     session.commit()
@@ -180,6 +207,14 @@ def commit_import_session(
             )
         if existing_vessel is not None:
             # Remove dependent records first so replacement works with SQLite foreign keys enabled.
+            sample_ids = session.scalars(
+                select(Sample.id).where(Sample.vessel_id == existing_vessel.id)
+            ).all()
+            session.execute(
+                delete(EnvironmentalSample).where(
+                    EnvironmentalSample.sample_id.in_(sample_ids)
+                )
+            )
             session.execute(delete(Sample).where(Sample.vessel_id == existing_vessel.id))
             session.execute(
                 delete(VesselMetric).where(VesselMetric.vessel_id == existing_vessel.id)
@@ -190,22 +225,26 @@ def commit_import_session(
         vessel = Vessel(imo=request.imo, name=request.name)
         session.add(vessel)
         session.flush()
+        samples = [
+            Sample(
+                vessel_id=vessel.id,
+                timestamp=sample.timestamp,
+                latitude_deg=sample.latitude_deg,
+                longitude_deg=sample.longitude_deg,
+                sog_knots=sample.sog_knots,
+                course_deg=sample.course_deg,
+                heading_deg=sample.heading_deg,
+                estimated_rpm=enriched.rpm,
+                estimated_fuel_tpd=enriched.fuel_tpd,
+                metrics_json=sample.metrics or None,
+            )
+            for sample, enriched in zip(normalized.samples, enriched, strict=True)
+        ]
+        session.add_all(samples)
+        session.flush()
         session.add_all(
-            [
-                Sample(
-                    vessel_id=vessel.id,
-                    timestamp=sample.timestamp,
-                    latitude_deg=sample.latitude_deg,
-                    longitude_deg=sample.longitude_deg,
-                    sog_knots=sample.sog_knots,
-                    course_deg=sample.course_deg,
-                    heading_deg=sample.heading_deg,
-                    estimated_rpm=sample.estimated_rpm,
-                    estimated_fuel_tpd=sample.estimated_fuel_tpd,
-                    metrics_json=sample.metrics or None,
-                )
-                for sample in normalized.samples
-            ]
+            _environmental_sample(sample, enriched)
+            for sample, enriched in zip(samples, enriched, strict=True)
         )
         session.add_all(
             [
@@ -276,13 +315,90 @@ def _normalize_session(import_session: ImportSession, imports_directory: Path) -
 def _validation_response(session_id: str, normalized: NormalizedImport) -> ImportValidationResponse:
     return ImportValidationResponse(
         session_id=session_id,
-        status=ImportStatus.VALIDATED if not normalized.errors else ImportStatus.FAILED,
-        errors=list(normalized.errors),
-        warnings=list(normalized.warnings),
+        status=(
+            ImportStatus.VALIDATED if not _has_blocking_errors(normalized) else ImportStatus.FAILED
+        ),
+        issues=[_issue_response(issue) for issue in normalized.issues],
         normalized_columns=normalized.normalized_columns,
-        estimated_metrics=["rpm", "fuel_tpd"],
+        estimated_metrics=_estimated_metrics(normalized),
         rows_accepted=len(normalized.samples),
         rows_rejected=normalized.rows_rejected,
+    )
+
+
+def _has_blocking_errors(normalized: NormalizedImport) -> bool:
+    return any(issue.severity is IssueSeverity.ERROR for issue in normalized.issues)
+
+
+def _issue_response(issue: ValidationIssue) -> ValidationIssueResponse:
+    return ValidationIssueResponse(
+        severity=issue.severity.value,
+        code=issue.code,
+        message=issue.message,
+        file=issue.file,
+        column=issue.column,
+        row_number=issue.row_number,
+    )
+
+
+def _estimated_metrics(normalized: NormalizedImport) -> list[str]:
+    estimated = [
+        metric.key for metric in normalized.metric_definitions if metric.origin == "estimated"
+    ]
+    return estimated or ["rpm", "fuel_tpd"]
+
+
+@dataclass(frozen=True)
+class _EnrichedSample:
+    rpm: float
+    fuel_tpd: float
+    stw_knots: float
+    stw_source: str
+    current_along_heading_knots: float | None
+    observation: EnvironmentalObservation | None
+
+
+def _enrich_sample(
+    sample: NormalizedSample,
+    observation: EnvironmentalObservation | None,
+    settings: Settings,
+) -> _EnrichedSample:
+    current_speed = observation.current_speed_knots if observation else None
+    current_direction = observation.current_direction_deg if observation else None
+    stw = derive_stw(
+        sample.sog_knots, sample.heading_deg, current_speed, current_direction
+    )
+    return _EnrichedSample(
+        rpm=calculate_rpm(stw.stw_knots),
+        fuel_tpd=calculate_fuel_rate_tpd(
+            stw.stw_knots,
+            settings.fuel_reference_speed_knots,
+            settings.fuel_reference_rate_tpd,
+        ),
+        stw_knots=stw.stw_knots,
+        stw_source=stw.source,
+        current_along_heading_knots=stw.current_along_heading_knots,
+        observation=observation,
+    )
+
+
+def _environmental_sample(
+    sample: Sample, enriched: _EnrichedSample
+) -> EnvironmentalSample:
+    observation = enriched.observation
+    return EnvironmentalSample(
+        sample_id=sample.id,
+        wind_speed_knots=observation.wind_speed_knots if observation else None,
+        wind_direction_deg=observation.wind_direction_deg if observation else None,
+        wave_height_m=observation.wave_height_m if observation else None,
+        wave_direction_deg=observation.wave_direction_deg if observation else None,
+        wave_period_s=observation.wave_period_s if observation else None,
+        current_speed_knots=observation.current_speed_knots if observation else None,
+        current_direction_deg=observation.current_direction_deg if observation else None,
+        weather_factor=observation.weather_factor if observation else None,
+        current_along_heading_knots=enriched.current_along_heading_knots,
+        stw_knots=enriched.stw_knots,
+        stw_source=enriched.stw_source,
     )
 
 

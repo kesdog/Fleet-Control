@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { AlertTriangle, ArrowLeft, ArrowRight, Check, FileUp, LoaderCircle, Upload, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { cancelImport, commitImport, previewImport, startImport, updateImportMapping, validateImport, type ImportMapping, type ImportPreview, type ImportValidation, type VesselSummary } from '../api/client'
+import { cancelImport, commitImport, previewImport, startImport, updateImportMapping, validateImport, type ImportIssue, type ImportMapping, type ImportPreview, type ImportValidation, type VesselSummary } from '../api/client'
 import './importTelemetry.css'
 
 type ImportTelemetryProps = {
@@ -35,6 +35,15 @@ function Messages({ heading, messages, tone }: { heading: string; messages: stri
   return <section className={`import-messages is-${tone}`} aria-label={heading}>
     {tone === 'error' ? <AlertTriangle size={17} aria-hidden="true" /> : null}
     <div><strong>{heading}</strong><ul>{messages.map((message) => <li key={message}>{message}</li>)}</ul></div>
+  </section>
+}
+
+function IssueList({ heading, issues, tone }: { heading: string; issues: ImportIssue[]; tone: 'error' | 'warning' | 'info' }) {
+  const { t } = useTranslation()
+  if (!issues.length) return null
+  return <section className={`import-messages is-${tone}`} aria-label={heading}>
+    {tone === 'error' ? <AlertTriangle size={17} aria-hidden="true" /> : null}
+    <div><strong>{heading}</strong><ul>{issues.map((issue, index) => <li key={`${issue.code}-${issue.row_number}-${index}`}><span className="import-issue-message">{issue.message}</span>{issue.code ? <code className="import-issue-code">{issue.code}</code> : null}{issue.file ? <span className="import-issue-context">{t('import.issueFile')}: {issue.file}</span> : null}{issue.column ? <span className="import-issue-context">{t('import.issueColumn')}: {issue.column}</span> : null}{issue.row_number != null ? <span className="import-issue-context">{t('import.issueRow')}: {issue.row_number}</span> : null}</li>)}</ul></div>
   </section>
 }
 
@@ -100,21 +109,27 @@ export function ImportTelemetry({ vessels, onClose, onCommitted, onNotify }: Imp
     setBusy(true)
     try {
       const result = await validateImport(sessionId)
+      console.debug('[import] validation result', result)
       setValidation(result)
-      if (!result.errors.length) setStep('review')
+      const errors = result.issues.filter((issue) => issue.severity === 'error')
+      if (errors.length) onNotify(t('import.validationFailedToast', { count: errors.length }), 'error')
+      else setStep('review')
     } catch (error) {
+      console.debug('[import] validation request failed', error)
       onNotify(error instanceof Error ? error.message : t('import.validationError'), 'error')
     } finally { setBusy(false) }
   }
 
   const commit = async () => {
-    if (!sessionId || !imo.trim() || validation?.errors.length || (replacing && !replaceConfirmed)) return
+    if (!sessionId || !imo.trim() || validation?.issues.some((issue) => issue.severity === 'error') || (replacing && !replaceConfirmed)) return
     setBusy(true)
     try {
       const result = await commitImport(sessionId, imo.trim(), name.trim(), replacing ? 'REPLACE' : 'CREATE')
+      console.debug('[import] commit result', result)
       setSessionId('')
       onCommitted(result.imo, result.samples_imported)
     } catch (error) {
+      console.debug('[import] commit request failed', error)
       onNotify(error instanceof Error ? error.message : t('import.commitError'), 'error')
     } finally { setBusy(false) }
   }
@@ -162,8 +177,8 @@ export function ImportTelemetry({ vessels, onClose, onCommitted, onNotify }: Imp
 
       {step === 'validate' ? <>
         <div className="import-stage-heading"><p className="eyebrow">04 / {t('import.validate')}</p><h2>{t('import.stageValidate')}</h2><p>{t('import.validateDescription')}</p></div>
-        {validation ? <><Messages heading={t('import.validationErrors')} messages={validation.errors} tone="error" /><Messages heading={t('import.validationWarnings')} messages={validation.warnings} tone="warning" /><section className="import-validation-summary"><div><strong>{validation.rows_accepted.toLocaleString()}</strong><span>{t('import.acceptedRows')}</span></div><div><strong>{validation.rows_rejected.toLocaleString()}</strong><span>{t('import.rejectedRows')}</span></div><div><strong>{validation.estimated_metrics.join(', ')}</strong><span>{t('import.estimatedAfterImport')}</span></div></section>{validation.errors.length ? <p className="import-help">{t('import.correctMapping')}</p> : <Messages heading={t('import.readyForReview')} messages={[t('import.validationPassed')]} tone="info" />}</> : <div className="import-empty-validation"><LoaderCircle className="is-spinning" size={22} /><p>{t('import.validationNotRun')}</p></div>}
-        <div className="import-stage-actions"><button type="button" className="import-secondary" onClick={() => setStep('map')}><ArrowLeft size={16} />{t('import.backToMapping')}</button><button type="button" className="import-primary" onClick={() => void validate()} disabled={busy}>{busy ? <LoaderCircle className="is-spinning" size={16} /> : null}{validation?.errors.length ? t('import.validateAgain') : validation ? t('import.continueReview') : t('import.runValidation')} <ArrowRight size={16} /></button></div>
+        {validation ? <><IssueList heading={t('import.validationErrors')} issues={validation.issues.filter((issue) => issue.severity === 'error')} tone="error" /><IssueList heading={t('import.validationWarnings')} issues={validation.issues.filter((issue) => issue.severity === 'warning')} tone="warning" /><IssueList heading={t('import.validationInformation')} issues={validation.issues.filter((issue) => issue.severity === 'information')} tone="info" /><section className="import-validation-summary"><div><strong>{validation.rows_accepted.toLocaleString()}</strong><span>{t('import.acceptedRows')}</span></div><div><strong>{validation.rows_rejected.toLocaleString()}</strong><span>{t('import.rejectedRows')}</span></div><div><strong>{validation.estimated_metrics.join(', ')}</strong><span>{t('import.estimatedAfterImport')}</span></div></section>{validation.issues.some((issue) => issue.severity === 'error') ? <p className="import-help">{t('import.correctMapping')}</p> : <Messages heading={t('import.readyForReview')} messages={[t('import.validationPassed')]} tone="info" />}</> : <div className="import-empty-validation"><LoaderCircle className="is-spinning" size={22} /><p>{t('import.validationNotRun')}</p></div>}
+        <div className="import-stage-actions"><button type="button" className="import-secondary" onClick={() => setStep('map')}><ArrowLeft size={16} />{t('import.backToMapping')}</button><button type="button" className="import-primary" onClick={() => void validate()} disabled={busy}>{busy ? <LoaderCircle className="is-spinning" size={16} /> : null}{validation?.issues.some((issue) => issue.severity === 'error') ? t('import.validateAgain') : validation ? t('import.continueReview') : t('import.runValidation')} <ArrowRight size={16} /></button></div>
       </> : null}
 
       {step === 'review' && validation ? <>

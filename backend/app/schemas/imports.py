@@ -68,11 +68,19 @@ class UpdateMappingResponse(BaseModel):
     mapping: dict[str, FileMapping]
 
 
+class ValidationIssueResponse(BaseModel):
+    severity: str
+    code: str
+    message: str
+    file: str | None = None
+    column: str | None = None
+    row_number: int | None = None
+
+
 class ImportValidationResponse(BaseModel):
     session_id: str
     status: ImportStatus
-    errors: list[str]
-    warnings: list[str]
+    issues: list[ValidationIssueResponse]
     normalized_columns: dict[str, list[str]]
     estimated_metrics: list[str]
     rows_accepted: int

@@ -8,7 +8,7 @@ from types import MappingProxyType
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.db.models import Sample, Vessel, VesselMetric
+from app.db.models import EnvironmentalSample, Sample, Vessel, VesselMetric
 
 
 @dataclass(frozen=True)
@@ -33,6 +33,17 @@ class SampleCacheEntry:
     heading_deg: float | None
     estimated_rpm: float
     estimated_fuel_tpd: float
+    wind_speed_knots: float | None
+    wind_direction_deg: float | None
+    wave_height_m: float | None
+    wave_direction_deg: float | None
+    wave_period_s: float | None
+    current_speed_knots: float | None
+    current_direction_deg: float | None
+    weather_factor: float | None
+    current_along_heading_knots: float | None
+    stw_knots: float | None
+    stw_source: str | None
     metrics: Mapping[str, float]
     missing_fields: frozenset[str]
 
@@ -131,8 +142,16 @@ def _build_vessel_entry(session: Session, vessel: Vessel) -> VesselCacheEntry:
         )
     )
     source_metric_keys = {metric.key for metric in metrics if metric.origin == "measured"}
+    environmental_rows = session.execute(
+        select(Sample.id, EnvironmentalSample)
+        .join(EnvironmentalSample, EnvironmentalSample.sample_id == Sample.id)
+        .where(Sample.vessel_id == vessel.id)
+    ).all()
+    environmental_by_sample = {
+        sample_id: environmental for sample_id, environmental in environmental_rows
+    }
     samples = tuple(
-        _build_sample_entry(sample, source_metric_keys)
+        _build_sample_entry(sample, source_metric_keys, environmental_by_sample.get(sample.id))
         for sample in session.scalars(
             select(Sample).where(Sample.vessel_id == vessel.id).order_by(Sample.timestamp)
         )
@@ -147,7 +166,11 @@ def _build_vessel_entry(session: Session, vessel: Vessel) -> VesselCacheEntry:
     )
 
 
-def _build_sample_entry(sample: Sample, source_metric_keys: set[str]) -> SampleCacheEntry:
+def _build_sample_entry(
+    sample: Sample,
+    source_metric_keys: set[str],
+    environmental: EnvironmentalSample | None,
+) -> SampleCacheEntry:
     metrics = {key: float(value) for key, value in (sample.metrics_json or {}).items()}
     missing_fields = {
         key
@@ -173,6 +196,19 @@ def _build_sample_entry(sample: Sample, source_metric_keys: set[str]) -> SampleC
         heading_deg=sample.heading_deg,
         estimated_rpm=_required_float(sample.estimated_rpm, "rpm"),
         estimated_fuel_tpd=_required_float(sample.estimated_fuel_tpd, "fuel_tpd"),
+        wind_speed_knots=environmental.wind_speed_knots if environmental else None,
+        wind_direction_deg=environmental.wind_direction_deg if environmental else None,
+        wave_height_m=environmental.wave_height_m if environmental else None,
+        wave_direction_deg=environmental.wave_direction_deg if environmental else None,
+        wave_period_s=environmental.wave_period_s if environmental else None,
+        current_speed_knots=environmental.current_speed_knots if environmental else None,
+        current_direction_deg=environmental.current_direction_deg if environmental else None,
+        weather_factor=environmental.weather_factor if environmental else None,
+        current_along_heading_knots=(
+            environmental.current_along_heading_knots if environmental else None
+        ),
+        stw_knots=environmental.stw_knots if environmental else None,
+        stw_source=environmental.stw_source if environmental else None,
         metrics=MappingProxyType(metrics),
         missing_fields=frozenset(missing_fields),
     )

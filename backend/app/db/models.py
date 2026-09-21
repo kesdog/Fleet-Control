@@ -51,6 +51,34 @@ class Sample(Base):
     metrics_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
+class EnvironmentalSample(Base):
+    __tablename__ = "environmental_samples"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    sample_id: Mapped[int] = mapped_column(
+        ForeignKey("samples.id"), unique=True, index=True
+    )
+
+    wind_speed_knots: Mapped[float | None] = mapped_column(Float)
+    wind_direction_deg: Mapped[float | None] = mapped_column(Float)
+
+    wave_height_m: Mapped[float | None] = mapped_column(Float)
+    wave_direction_deg: Mapped[float | None] = mapped_column(Float)
+    wave_period_s: Mapped[float | None] = mapped_column(Float)
+
+    current_speed_knots: Mapped[float | None] = mapped_column(Float)
+    current_direction_deg: Mapped[float | None] = mapped_column(Float)
+
+    weather_factor: Mapped[float | None] = mapped_column(Float)
+
+    # Derived current projection and Speed Through Water.
+    current_along_heading_knots: Mapped[float | None] = mapped_column(Float)
+    stw_knots: Mapped[float | None] = mapped_column(Float)
+    stw_source: Mapped[str | None] = mapped_column(String(32))
+
+    provider: Mapped[str] = mapped_column(String(64), default="open-meteo")
+
+
 class VesselMetric(Base):
     __tablename__ = "vessel_metrics"
 

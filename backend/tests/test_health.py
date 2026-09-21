@@ -4,6 +4,7 @@ from sqlalchemy import inspect
 
 def test_application_starts_and_initializes_schema(client: TestClient) -> None:
     assert set(inspect(client.app.state.engine).get_table_names()) == {
+        "environmental_samples",
         "import_sessions",
         "samples",
         "vessel_metrics",

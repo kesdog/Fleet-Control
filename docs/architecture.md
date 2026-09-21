@@ -16,7 +16,8 @@ SQLite is the persistent source of truth. It is appropriate for this prototype b
 
 - `vessels`: one row per IMO.
 - `samples`: normalized timestamped GPS/telemetry samples.
-- `vessel_metrics`: measured and estimated metric definitions.
+- `environmental_samples`: one row per sample holding externally sourced wind, wave, ocean-current, Weather Factor, and derived current-projection/STW values.
+- `vessel_metrics`: measured, estimated, and environmental metric definitions.
 - `import_sessions`: temporary staged-import metadata.
 
 The database schema initializes automatically. The current lightweight upgrade adds the `based_on` metadata column without introducing Alembic; a production deployment should replace this with managed migrations.
@@ -29,10 +30,13 @@ CSV files remain temporary until an import session validates successfully. The i
 2. Requires explicit confirmation for ambiguous speed units.
 3. Converts speed to knots.
 4. Merges GPS and motion files by timestamp, never row position.
-5. Calculates RPM and fuel estimates from measured SOG.
-6. Writes vessel data, samples, metric definitions, and import status in one SQLite transaction.
+5. Enriches each sample with Open-Meteo historical wind, wave, and ocean-current data (grouped by day and a 0.1° grid, matched to the nearest hour).
+6. Derives Speed Through Water, RPM, and fuel estimates from SOG plus the current projection.
+7. Writes vessel data, samples, environmental samples, metric definitions, and import status in one SQLite transaction.
 
 Failed commits roll back database changes. A cache update happens only after the transaction succeeds.
+
+Enrichment runs outside the write transaction so provider latency never holds the SQLite lock. A provider failure leaves environmental fields null and STW falls back to SOG; the telemetry import always succeeds. Environmental data is distinguished from vessel telemetry by its own table and its `environmental` metric origin.
 
 ## Cache Read Model
 
@@ -42,7 +46,7 @@ SQLite remains authoritative. Normal GET routes use the cache and execute no SQL
 
 ## Missing And Estimated Data
 
-Missing source telemetry is represented by each cache sample's `missing_fields` collection. It is not interpolated or converted into an estimate. Estimated RPM and fuel are separate values with `origin`, `formula`, `based_on`, and `warning` metadata.
+Missing source telemetry is represented by each cache sample's `missing_fields` collection. It is not interpolated or converted into an estimate. Estimated RPM and fuel are separate values with `origin`, `formula`, `based_on`, and `warning` metadata. Environmental metrics carry an `environmental` origin and remain null when Open-Meteo data is unavailable.
 
 ## Future Scale Path
 

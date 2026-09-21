@@ -37,9 +37,18 @@ def test_validated_import_commits_normalized_timestamp_joined_data(client: TestC
     validation = client.post(f"/api/imports/{session_id}/validate").json()
     assert validation["rows_accepted"] == 2
     assert validation["rows_rejected"] == 0
-    assert validation["estimated_metrics"] == ["rpm", "fuel_tpd"]
-    assert "1 GPS rows have no matching motion timestamp." in validation["warnings"]
-    assert "1 motion rows have no matching GPS timestamp." in validation["warnings"]
+    assert validation["estimated_metrics"] == [
+        "rpm",
+        "fuel_tpd",
+        "stw",
+        "current_along_heading",
+        "weather_factor",
+    ]
+    warning_messages = [
+        issue["message"] for issue in validation["issues"] if issue["severity"] == "warning"
+    ]
+    assert "1 GPS rows have no matching motion timestamp." in warning_messages
+    assert "1 motion rows have no matching GPS timestamp." in warning_messages
 
     committed = client.post(
         f"/api/imports/{session_id}/commit",
@@ -62,8 +71,8 @@ def test_validated_import_commits_normalized_timestamp_joined_data(client: TestC
         )
         rpm = next(metric for metric in metrics if metric.key == "rpm")
         assert rpm.origin == "estimated"
-        assert rpm.formula == "4 × SOG"
-        assert rpm.based_on == ["sog"]
+        assert rpm.formula == "4 × STW"
+        assert rpm.based_on == ["stw"]
 
 
 def test_existing_vessel_requires_explicit_replace(client: TestClient) -> None:
@@ -107,7 +116,11 @@ def test_duplicate_gps_timestamps_fail_validation_and_cannot_commit(client: Test
 
     validation = client.post(f"/api/imports/{session_id}/validate")
     assert validation.json()["status"] == "FAILED"
-    assert "duplicate GPS timestamp" in validation.json()["errors"][0]
+    issues = validation.json()["issues"]
+    assert any(
+        issue["severity"] == "error" and issue["code"] == "duplicate_gps_timestamp"
+        for issue in issues
+    )
 
     committed = client.post(
         f"/api/imports/{session_id}/commit",
@@ -142,3 +155,44 @@ def test_failed_replace_transaction_preserves_existing_vessel(client: TestClient
         vessel = session.scalar(select(Vessel).where(Vessel.imo == "IMO1004"))
         assert vessel is not None
         assert len(list(session.scalars(select(Sample).where(Sample.vessel_id == vessel.id)))) == 2
+
+
+def test_validation_returns_structured_issues(client: TestClient) -> None:
+    bad_course = (
+        "Timestamp,Latitude [deg],Longitude [deg],Speed [kn],Course [deg]\n"
+        "2026-03-01T00:15:00,32.5,-79.4,20,400\n"
+    )
+    created = client.post("/api/imports", files={"files": ("gps.csv", bad_course, "text/csv")})
+    session_id = created.json()["session_id"]
+
+    validation = client.post(f"/api/imports/{session_id}/validate")
+    assert validation.json()["status"] == "FAILED"
+    issues = validation.json()["issues"]
+    issue = next(issue for issue in issues if issue["code"] == "course_out_of_range")
+    assert issue["severity"] == "error"
+    assert issue["column"] == "Course [deg]"
+    assert issue["row_number"] == 2
+    assert issue["file"] == "gps.csv"
+
+
+def test_validation_distinguishes_warning_from_error(client: TestClient) -> None:
+    valid = (
+        "Timestamp,Latitude [deg],Longitude [deg],Speed [kn]\n"
+        "2026-03-01T00:15:00,32.5,-79.4,20\n"
+    )
+    motion = "Timestamp,Roll motion [deg]\n2026-03-01T00:45:00,0.2\n"
+    created = client.post(
+        "/api/imports",
+        files=[
+            ("files", ("gps.csv", valid, "text/csv")),
+            ("files", ("motion.csv", motion, "text/csv")),
+        ],
+    )
+    session_id = created.json()["session_id"]
+
+    validation = client.post(f"/api/imports/{session_id}/validate")
+    body = validation.json()
+    assert body["status"] == "VALIDATED"
+    assert not any(issue["severity"] == "error" for issue in body["issues"])
+    assert any(issue["severity"] == "warning" for issue in body["issues"])
+    assert any(issue["severity"] == "information" for issue in body["issues"])

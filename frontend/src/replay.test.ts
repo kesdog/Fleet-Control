@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { nextReplayIndex, replayFrames, replayMinimumGapMs } from './replay'
 import type { TelemetryRecord } from './api/client'
 
-const record = (timestamp: string): TelemetryRecord => ({ timestamp, latitude_deg: 0, longitude_deg: 0, sog_knots: 12, course_deg: 90, heading_deg: 90, estimated_rpm: 48, estimated_fuel_tpd: 76.8, metrics: {}, missing_fields: [] })
+const record = (timestamp: string): TelemetryRecord => ({ timestamp, latitude_deg: 0, longitude_deg: 0, sog_knots: 12, course_deg: 90, heading_deg: 90, estimated_rpm: 48, estimated_fuel_tpd: 76.8, stw_knots: null, stw_source: null, current_along_heading_knots: null, wind_speed_knots: null, wind_direction_deg: null, wave_height_m: null, wave_direction_deg: null, wave_period_s: null, current_speed_knots: null, current_direction_deg: null, weather_factor: null, metrics: {}, missing_fields: [] })
 
 describe('replay helpers', () => {
   it('samples recorded frames nearest to four six-hour daily slots and respects the selected range', () => {

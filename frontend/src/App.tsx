@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useState } from 'react'
 import { useQueries, useQuery } from '@tanstack/react-query'
 import { CheckCircle2, Radio, Settings, XCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import { getMetrics, getSeries, getTelemetry, getVessels } from './api/client'
+import { getMetrics, getPerformance, getSeries, getTelemetry, getVessels } from './api/client'
 import { setVesselColor } from './vesselColors'
 import { ApiStatus } from './components/ApiStatus'
 import { FleetManifest } from './components/FleetManifest'
@@ -10,6 +10,7 @@ import { LanguageSwitcher } from './components/LanguageSwitcher'
 import { ImportTelemetry } from './components/ImportTelemetry'
 import { TelemetryFrames } from './components/TelemetryFrames'
 import { TelemetryChart } from './components/TelemetryChart'
+import { VoyagePerformance } from './components/VoyagePerformance'
 import { replayFrames, replayMinimumGapMs, nextReplayIndex } from './replay'
 import './components/dashboard.css'
 import './components/chartAddMenu.css'
@@ -35,6 +36,7 @@ function App() {
   const [focusedImo, setFocusedImo] = useState('')
   const [selectedMetric, setSelectedMetric] = useState('')
   const [extraChartMetrics, setExtraChartMetrics] = useState<string[]>([])
+  const [chartTypes, setChartTypes] = useState<Record<string, 'line' | 'bar'>>({})
   const [selectedTimestamp, setSelectedTimestamp] = useState('')
   const [goToTelemetryRequest, setGoToTelemetryRequest] = useState(0)
   const [routeStart, setRouteStart] = useState('')
@@ -73,6 +75,20 @@ function App() {
   // Each selected vessel can expose a different available range. Clamp independently so the
   // shared calendar controls never ask one vessel for another vessel's unavailable dates.
   const mapImos = selectedImos.length ? selectedImos : activeImo ? [activeImo] : []
+  const performanceQueries = useQueries({
+    queries: mapImos.map((imo) => {
+      const vessel = vesselsQuery.data?.find((entry) => entry.imo === imo)
+      const range = boundedRange(routeStart, routeEnd, vessel?.start ?? null, vessel?.end ?? null)
+      return {
+        queryKey: ['performance', imo, range.start, range.end],
+        queryFn: () => getPerformance(imo, range.start, range.end),
+        enabled: range.valid,
+      }
+    }),
+  })
+  const performanceEntries = performanceQueries.flatMap((query, index) => query.data ? [{ imo: mapImos[index], name: vesselsQuery.data?.find((vessel) => vessel.imo === mapImos[index])?.name ?? null, performance: query.data }] : [])
+  const performanceLoading = performanceQueries.some((query) => query.isPending)
+  const performanceError = performanceQueries.some((query) => query.isError)
   const mapTelemetryQueries = useQueries({
     queries: mapImos.map((imo) => {
       const vessel = vesselsQuery.data?.find((entry) => entry.imo === imo)
@@ -89,7 +105,7 @@ function App() {
   // exposes the focused metric. useQueries starts these independent requests in parallel.
   const chartImos = selectedImos.length ? selectedImos : activeImo ? [activeImo] : []
   const chartSlots = [activeMetric, ...extraChartMetrics].filter(Boolean)
-  const chartSlotQueries = useQueries({ queries: chartSlots.flatMap((metric) => chartImos.filter((imo) => vesselsQuery.data?.find((vessel) => vessel.imo === imo)?.available_metrics.includes(metric)).map((imo) => ({ queryKey: ['chart-slot-series', imo, metric, activeStart, activeEnd], queryFn: () => getSeries(imo, metric, activeStart, activeEnd), enabled: Boolean(metric && rangeValid) }))) })
+  const chartSlotQueries = useQueries({ queries: chartSlots.flatMap((metric) => chartImos.filter((imo) => vesselsQuery.data?.find((vessel) => vessel.imo === imo)?.available_metrics.includes(metric)).map((imo) => ({ queryKey: ['chart-slot-series', imo, metric, activeStart, activeEnd], queryFn: () => getSeries(imo, metric, activeStart, activeEnd, metric === 'fuel_tpd' ? 20_000 : 3_000), enabled: Boolean(metric && rangeValid) }))) })
   let chartQueryOffset = 0
   const chartSlotsWithSeries = chartSlots.map((metric) => { const count = chartImos.filter((imo) => vesselsQuery.data?.find((vessel) => vessel.imo === imo)?.available_metrics.includes(metric)).length; const queries = chartSlotQueries.slice(chartQueryOffset, chartQueryOffset + count); chartQueryOffset += count; return { metric, series: queries.flatMap((query) => query.data ? [query.data] : []), loading: queries.some((query) => query.isPending), error: queries.some((query) => query.isError), refetch: () => queries.forEach((query) => void query.refetch()) } })
   const replay = replayFrames(telemetryQuery.data?.records ?? [], routeStart, routeEnd, replayFramesPerDay)
@@ -146,8 +162,9 @@ function App() {
         <FleetManifest vessels={vesselsQuery.data ?? []} selectedImos={selectedImos.length ? selectedImos : activeImo ? [activeImo] : []} focusedImo={activeImo} onToggle={toggleVessel} onColorChange={(imo, color) => { setVesselColor(imo, color); setColorRevision((revision) => revision + 1) }} />
       </section>
        <TelemetryFrames vessels={mapTelemetry} focusedImo={activeImo} selectedTimestamp={selectedTimestamp} onFrameSelect={setSelectedTimestamp} routeStart={routeStart} routeEnd={routeEnd} onRouteStartChange={setRouteStart} onRouteEndChange={setRouteEnd} goToTelemetryRequest={goToTelemetryRequest} />
-       <section className="chart-metric-controls" aria-label={t('chart.metricsAriaLabel')}><label>{t('chart.primaryMetric')}<select value={activeMetric} onChange={(event) => setSelectedMetric(event.target.value)}>{metricsQuery.data?.map((metric) => <option key={metric.key} value={metric.key}>{metric.label}</option>)}</select></label></section>
-        {chartSlotsWithSeries.map((slot, index) => <section className="chart-slot" key={`${slot.metric}-${index}`}>{index ? <div className="chart-slot-controls"><label>{t('chart.chartMetric')}<select value={slot.metric} onChange={(event) => setExtraChartMetrics((metrics) => metrics.map((metric, metricIndex) => metricIndex === index - 1 ? event.target.value : metric))}>{metricsQuery.data?.map((metric) => <option key={metric.key} value={metric.key}>{metric.label}</option>)}</select></label><button type="button" onClick={() => setExtraChartMetrics((metrics) => metrics.filter((_, metricIndex) => metricIndex !== index - 1))}>{t('chart.removeChart')}</button></div> : null}<TelemetryChart title={index ? `${t('chart.telemetryTrend')} ${index + 1}` : t('chart.telemetryTrend')} series={slot.series} loading={slot.loading} error={slot.error} colorVersion={colorRevision} dateRange={{ start: routeStart, end: routeEnd }} replayTimestamp={replay[replayValue]?.timestamp} onRetry={slot.refetch} /></section>)}
+       <VoyagePerformance entries={performanceEntries} loading={performanceLoading} error={performanceError} onRetry={() => performanceQueries.forEach((query) => void query.refetch())} />
+       <section className="chart-metric-controls" aria-label={t('chart.metricsAriaLabel')}><label>{t('chart.primaryMetric')}<select value={activeMetric} onChange={(event) => setSelectedMetric(event.target.value)}>{metricsQuery.data?.map((metric) => <option key={metric.key} value={metric.key}>{metric.label}</option>)}</select></label><label>{t('chart.chartType')}<select value={chartTypes[activeMetric] ?? 'line'} onChange={(event) => setChartTypes((types) => ({ ...types, [activeMetric]: event.target.value as 'line' | 'bar' }))}><option value="line">{t('chart.typeLine')}</option><option value="bar">{t('chart.typeBar')}</option></select></label></section>
+        {chartSlotsWithSeries.map((slot, index) => <section className="chart-slot" key={`${slot.metric}-${index}`}>{index ? <div className="chart-slot-controls"><label>{t('chart.chartMetric')}<select value={slot.metric} onChange={(event) => setExtraChartMetrics((metrics) => metrics.map((metric, metricIndex) => metricIndex === index - 1 ? event.target.value : metric))}>{metricsQuery.data?.map((metric) => <option key={metric.key} value={metric.key}>{metric.label}</option>)}</select></label><label>{t('chart.chartType')}<select value={chartTypes[slot.metric] ?? 'line'} onChange={(event) => setChartTypes((types) => ({ ...types, [slot.metric]: event.target.value as 'line' | 'bar' }))}><option value="line">{t('chart.typeLine')}</option><option value="bar">{t('chart.typeBar')}</option></select></label><button type="button" onClick={() => setExtraChartMetrics((metrics) => metrics.filter((_, metricIndex) => metricIndex !== index - 1))}>{t('chart.removeChart')}</button></div> : null}<TelemetryChart title={index ? `${t('chart.telemetryTrend')} ${index + 1}` : t('chart.telemetryTrend')} series={slot.series} loading={slot.loading} error={slot.error} colorVersion={colorRevision} dateRange={{ start: routeStart, end: routeEnd }} replayTimestamp={replay[replayValue]?.timestamp} chartType={chartTypes[slot.metric] ?? 'line'} onRetry={slot.refetch} /></section>)}
        <div className="chart-add-menu"><button type="button" className="chart-add-button" aria-expanded={chartMenuOpen} aria-controls="chart-metric-menu" onClick={() => setChartMenuOpen((open) => !open)}>+<span className="sr-only">{t('chart.addMetricChart')}</span></button>{chartMenuOpen ? <div id="chart-metric-menu" role="menu" aria-label={t('chart.addMetricChart')}>{metricsQuery.data?.filter((metric) => !chartSlots.includes(metric.key)).map((metric) => <button type="button" role="menuitem" key={metric.key} onClick={() => { setExtraChartMetrics((metrics) => [...metrics, metric.key]); setChartMenuOpen(false) }}>{metric.label}</button>)}</div> : null}</div>
     </main>
     {notification ? <Toast notification={notification} onDismiss={() => setNotification(null)} /> : null}

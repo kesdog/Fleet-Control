@@ -35,7 +35,7 @@ def test_trajectory_splits_dateline_and_includes_metric_metadata(client: TestCli
     assert [len(segment) for segment in body["segments"]] == [2, 2]
     assert body["segments"][0][0]["metric_value"] == 40.0
     assert body["metric"]["origin"] == "estimated"
-    assert body["metric"]["based_on"] == ["sog"]
+    assert body["metric"]["based_on"] == ["stw"]
 
 
 def test_series_reports_missing_values_and_downsamples(client: TestClient) -> None:

@@ -1,0 +1,152 @@
+.voyage-performance {
+  grid-column: 1 / -1;
+  background: #fff;
+  border: 1px solid #dbe3e6;
+  border-radius: 12px;
+  padding: 18px 20px;
+}
+
+.voyage-performance .panel-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.voyage-performance .panel-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.voyage-performance .weather-toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #53636b;
+  font: 700 11px 'Courier New', monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.voyage-performance .weather-toggle input {
+  accent-color: #0c5f8a;
+  cursor: pointer;
+}
+
+.voyage-performance .ship-weather-impact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px dashed #dbe3e6;
+}
+
+.voyage-performance .impact-badge {
+  padding: 4px 9px;
+  border-radius: 4px;
+  font: 700 12px 'Courier New', monospace;
+}
+
+.voyage-performance .impact-badge.is-positive {
+  color: #8c3329;
+  background: #fdecea;
+}
+
+.voyage-performance .impact-badge.is-negative {
+  color: #176546;
+  background: #e6f4ed;
+}
+
+.voyage-performance .impact-badge.is-neutral {
+  color: #687780;
+  background: #eef2f3;
+}
+
+.voyage-performance .impact-breakdown {
+  color: #687780;
+  font: 11px 'Courier New', monospace;
+}
+
+.voyage-performance-ship {
+  border-left: 4px solid #0878a9;
+  border-radius: 6px;
+  background: #fbfdfe;
+  padding: 12px 16px;
+  margin-top: 12px;
+}
+
+.voyage-performance-ship:first-of-type {
+  margin-top: 0;
+}
+
+.voyage-performance .ship-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.voyage-performance .ship-swatch {
+  flex: none;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+}
+
+.voyage-performance .ship-heading strong {
+  color: #17313b;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+}
+
+.voyage-performance .ship-name {
+  color: #687780;
+  font-size: 12px;
+}
+
+.voyage-performance .ship-currency {
+  margin-left: auto;
+  color: #687780;
+  font: 700 10px 'Courier New', monospace;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.voyage-performance .detail-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px 20px;
+  margin: 0;
+  border-top: 0;
+}
+
+.voyage-performance .detail-list > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.voyage-performance .detail-list dt {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #687780;
+}
+
+.voyage-performance .detail-list dd {
+  margin: 0;
+  font-family: 'Courier New', monospace;
+  font-size: 15px;
+  color: #17313b;
+}
+
+.voyage-performance .loading-copy,
+.voyage-performance .error-copy {
+  padding: 8px 0;
+}

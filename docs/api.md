@@ -68,6 +68,34 @@ Use `mode: "REPLACE"` only to explicitly replace an existing vessel. `DELETE /ap
 
 The visualization endpoints accept optional `start`, `end`, and `max_points` parameters. `max_points` must be at least two when provided, and downsampling always preserves the first and last point.
 
+## Environmental And Performance API
+
+`GET /api/vessels/{imo}/environment?start=2026-03-01T00:15:00&end=2026-03-02T00:15:00` returns per-sample wind, wave, and ocean-current values with a `missing` flag when weather data is unavailable.
+
+`GET /api/vessels/{imo}/performance?start=2026-03-01T00:15:00&end=2026-03-07T00:15:00` returns aggregated voyage metrics:
+
+```json
+{
+  "imo": "IMO1",
+  "start": "2026-01-01T00:00:00Z",
+  "end": "2026-01-07T00:00:00Z",
+  "distance_nm": 1418.4,
+  "fuel_tonnes": 482.8,
+  "fuel_cost": 482800.0,
+  "fuel_currency": "EUR",
+  "fuel_efficiency_nm_per_tonne": 2.94,
+  "fuel_consumption_t_per_100nm": 34.04,
+  "fuel_cost_per_nm": 340.38,
+  "weather": {
+    "mean_wave_height_m": 2.1,
+    "max_wave_height_m": 4.7,
+    "mean_weather_factor": 1.01
+  }
+}
+```
+
+Environmental metrics (`stw`, `wind_speed`, `wave_height`, `wave_period`, `current_speed`, `weather_factor`, `fuel_tpd`, and others) are also available through the standard `/metrics`, `/series/{metric}`, and `/trajectory` endpoints.
+
 ## Status Codes
 
 - `200`: successful read, preview, validation, mapping, or commit.

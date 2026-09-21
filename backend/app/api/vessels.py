@@ -3,6 +3,14 @@ from typing import Annotated, cast
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 
+from app.config import Settings
+from app.schemas.performance import (
+    EnvironmentPointResponse,
+    EnvironmentResponse,
+    PerformanceResponse,
+    WeatherImpactResponse,
+    WeatherSummaryResponse,
+)
 from app.schemas.telemetry import TelemetryRecordResponse, TelemetryResponse
 from app.schemas.vessels import MetricResponse, VesselResponse, VesselSummaryResponse
 from app.schemas.visualization import (
@@ -16,6 +24,11 @@ from app.services.fleet_cache import (
     MetricCacheEntry,
     SampleCacheEntry,
     VesselCacheEntry,
+)
+from app.services.performance_service import (
+    PerformanceSample,
+    VoyagePerformance,
+    compute_voyage_performance,
 )
 
 router = APIRouter(prefix="/vessels", tags=["vessels"])
@@ -72,12 +85,77 @@ def get_telemetry(
                 heading_deg=sample.heading_deg,
                 estimated_rpm=sample.estimated_rpm,
                 estimated_fuel_tpd=sample.estimated_fuel_tpd,
+                stw_knots=sample.stw_knots,
+                stw_source=sample.stw_source,
+                current_along_heading_knots=sample.current_along_heading_knots,
+                wind_speed_knots=sample.wind_speed_knots,
+                wind_direction_deg=sample.wind_direction_deg,
+                wave_height_m=sample.wave_height_m,
+                wave_direction_deg=sample.wave_direction_deg,
+                wave_period_s=sample.wave_period_s,
+                current_speed_knots=sample.current_speed_knots,
+                current_direction_deg=sample.current_direction_deg,
+                weather_factor=sample.weather_factor,
                 metrics=dict(sample.metrics),
                 missing_fields=sorted(sample.missing_fields),
             )
             for sample in samples
         ],
     )
+
+
+@router.get("/{imo}/environment", response_model=EnvironmentResponse)
+def get_environment(
+    imo: str,
+    request: Request,
+    start: Annotated[datetime | None, Query()] = None,
+    end: Annotated[datetime | None, Query()] = None,
+    max_points: Annotated[int | None, Query(ge=2)] = None,
+) -> EnvironmentResponse:
+    entry = _require_vessel(get_fleet_cache(request), imo)
+    normalized_start = _normalize_timestamp(start)
+    normalized_end = _normalize_timestamp(end)
+    _validate_range(entry, normalized_start, normalized_end)
+    samples = _downsample(entry.samples_in_range(normalized_start, normalized_end), max_points)
+    return EnvironmentResponse(
+        imo=entry.imo,
+        start=normalized_start,
+        end=normalized_end,
+        records=[
+            EnvironmentPointResponse(
+                timestamp=sample.timestamp,
+                wind_speed_knots=sample.wind_speed_knots,
+                wind_direction_deg=sample.wind_direction_deg,
+                wave_height_m=sample.wave_height_m,
+                wave_direction_deg=sample.wave_direction_deg,
+                wave_period_s=sample.wave_period_s,
+                current_speed_knots=sample.current_speed_knots,
+                current_direction_deg=sample.current_direction_deg,
+                weather_factor=sample.weather_factor,
+                missing=sample.wind_speed_knots is None,
+            )
+            for sample in samples
+        ],
+    )
+
+
+@router.get("/{imo}/performance", response_model=PerformanceResponse)
+def get_performance(
+    imo: str,
+    request: Request,
+    start: Annotated[datetime | None, Query()] = None,
+    end: Annotated[datetime | None, Query()] = None,
+) -> PerformanceResponse:
+    entry = _require_vessel(get_fleet_cache(request), imo)
+    normalized_start = _normalize_timestamp(start)
+    normalized_end = _normalize_timestamp(end)
+    _validate_range(entry, normalized_start, normalized_end)
+    samples = entry.samples_in_range(normalized_start, normalized_end)
+    performance = compute_voyage_performance(
+        get_runtime_settings(request),
+        tuple(_performance_sample(sample) for sample in samples),
+    )
+    return _performance_response(entry, normalized_start, normalized_end, performance)
 
 
 @router.get("/{imo}/trajectory", response_model=TrajectoryResponse)
@@ -233,6 +311,16 @@ def _metric_value(sample: SampleCacheEntry, key: str) -> float | None:
         "heading": sample.heading_deg,
         "rpm": sample.estimated_rpm,
         "fuel_tpd": sample.estimated_fuel_tpd,
+        "stw": sample.stw_knots,
+        "current_along_heading": sample.current_along_heading_knots,
+        "weather_factor": sample.weather_factor,
+        "wind_speed": sample.wind_speed_knots,
+        "wind_direction": sample.wind_direction_deg,
+        "wave_height": sample.wave_height_m,
+        "wave_direction": sample.wave_direction_deg,
+        "wave_period": sample.wave_period_s,
+        "current_speed": sample.current_speed_knots,
+        "current_direction": sample.current_direction_deg,
     }
     return values.get(key, sample.metrics.get(key))
 
@@ -244,3 +332,56 @@ def _downsample(
         return samples
     indexes = {round(index * (len(samples) - 1) / (max_points - 1)) for index in range(max_points)}
     return tuple(samples[index] for index in sorted(indexes))
+
+
+def get_runtime_settings(request: Request) -> Settings:
+    return cast(Settings, request.app.state.settings)
+
+
+def _performance_sample(sample: SampleCacheEntry) -> PerformanceSample:
+    return PerformanceSample(
+        timestamp=sample.timestamp,
+        latitude_deg=sample.latitude_deg,
+        longitude_deg=sample.longitude_deg,
+        sog_knots=sample.sog_knots,
+        heading_deg=sample.heading_deg,
+        current_speed_knots=sample.current_speed_knots,
+        current_direction_deg=sample.current_direction_deg,
+        wave_height_m=sample.wave_height_m,
+        wave_direction_deg=sample.wave_direction_deg,
+        wind_speed_knots=sample.wind_speed_knots,
+        wind_direction_deg=sample.wind_direction_deg,
+        weather_factor=sample.weather_factor,
+    )
+
+
+def _performance_response(
+    entry: VesselCacheEntry,
+    start: datetime | None,
+    end: datetime | None,
+    performance: VoyagePerformance,
+) -> PerformanceResponse:
+    return PerformanceResponse(
+        imo=entry.imo,
+        start=start,
+        end=end,
+        distance_nm=performance.distance_nm,
+        fuel_tonnes=performance.fuel_tonnes,
+        fuel_cost=performance.fuel_cost,
+        fuel_currency=performance.fuel_currency,
+        fuel_efficiency_nm_per_tonne=performance.fuel_efficiency_nm_per_tonne,
+        fuel_consumption_t_per_100nm=performance.fuel_consumption_t_per_100nm,
+        fuel_cost_per_nm=performance.fuel_cost_per_nm,
+        weather=WeatherSummaryResponse(
+            mean_wave_height_m=performance.mean_wave_height_m,
+            max_wave_height_m=performance.max_wave_height_m,
+            mean_weather_factor=performance.mean_weather_factor,
+        ),
+        weather_impact=WeatherImpactResponse(
+            adjusted_fuel_tonnes=performance.weather_adjusted_fuel_tonnes,
+            adjusted_fuel_cost=performance.weather_adjusted_fuel_cost,
+            wind_percent=performance.wind_impact_percent,
+            wave_percent=performance.wave_impact_percent,
+            total_percent=performance.weather_impact_percent,
+        ),
+    )

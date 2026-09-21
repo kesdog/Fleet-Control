@@ -2,9 +2,9 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.16.0
+## Version 0.17.0
 
-This milestone provides the Python backend, deterministic CSV inspection, and an operations frontend for map, replay, and chart telemetry review. v0.16.0 is the frontend release candidate: it completes the English/French UI, adds keyboard accessibility for the vessel, date, metric, and replay controls, and removes development artifacts so the workspace is ready for interviewer review:
+This milestone adds historical weather/ocean enrichment, current-corrected Speed Through Water (STW), and voyage fuel performance on top of the existing telemetry import and review workflow. v0.17.0 extends v0.16.0's English/French operations frontend with an environmental data model, STW-aware fuel estimates, and a voyage performance panel:
 
 - FastAPI application with a health endpoint.
 - SQLite database initialized automatically at startup.
@@ -39,6 +39,13 @@ This milestone provides the Python backend, deterministic CSV inspection, and an
 - Configurable 2-12 replay frames per day with cadence-aware sampling and a guaranteed final telemetry frame.
 - Complete English/French interface with persisted language selection and no untranslated user-facing strings.
 - Keyboard-accessible vessel, date, metric, language, and replay playback controls with visible focus states and clear empty/loading/error messaging.
+- Open-Meteo historical weather and marine enrichment attached to each vessel sample at commit time.
+- A separate `environmental_samples` table storing wind, wave, ocean-current, and Weather Factor values with `environmental` provenance.
+- Current-corrected Speed Through Water (`SOG − current along heading`) with an explicit `sog_fallback` provenance when current data is unavailable.
+- STW-aware RPM (`4 × STW`) and fuel rate (`150 × (STW / 15)³ tonnes/day`) calculations moved into `performance_service.py`.
+- Voyage fuel, cost, distance, and efficiency aggregation via `GET /api/vessels/{imo}/performance`.
+- Per-sample environmental series via `GET /api/vessels/{imo}/environment`.
+- A compact Voyage Performance panel and environmental metrics in the telemetry-frame table.
 
 ## Run the frontend
 
@@ -111,13 +118,24 @@ After preview and mapping, call `POST /api/imports/{session_id}/validate`. A suc
 
 At startup, vessel data is hydrated into an immutable in-memory read cache. Each cached sample includes `missing_fields`, which identifies source telemetry not supplied for that timestamp. This is distinct from estimated metrics, whose definitions include `origin`, `formula`, `based_on`, and `warning` metadata.
 
-RPM and fuel consumption are estimated only when a measured Speed Over Ground (SOG) value is available. The backend calculates `estimated_rpm = 4 * SOG_knots` and `estimated_fuel_tpd = 150 * (SOG_knots / 15)^3`; neither value is presented as measured telemetry.
+RPM and fuel consumption are estimated from Speed Through Water. When ocean-current data is available, the backend projects the current onto the vessel heading and derives `stw = SOG − current along heading`; otherwise STW falls back to SOG and the metric provenance records the fallback. The estimates are `estimated_rpm = 4 × STW` and `estimated_fuel_tpd = 150 × (STW / 15)³`; neither value is presented as measured telemetry. Fuel cost uses a configurable `FUEL_PRICE_PER_TONNE` and `FUEL_CURRENCY` (default `1000` `EUR`).
 
 ## Read API
 
 The cache-backed read API provides `GET /api/vessels`, `GET /api/vessels/{imo}`, `GET /api/vessels/{imo}/metrics`, and `GET /api/vessels/{imo}/telemetry`. Telemetry accepts optional ISO 8601 `start` and `end` query parameters. Read responses perform no SQLite queries and expose `missing_fields` independently from estimated metrics.
 
 Visualization clients can use `GET /api/vessels/{imo}/trajectory` and `GET /api/vessels/{imo}/series/{metric}`. Both accept `start`, `end`, and optional `max_points` parameters. Trajectories split automatically at International Date Line crossings, while series and trajectory downsampling deterministically preserve first and last points.
+
+Environmental enrichment uses `GET /api/vessels/{imo}/environment` for per-sample wind, wave, and current values and `GET /api/vessels/{imo}/performance` for aggregated voyage distance, fuel, cost, and efficiency. Enrichment is fetched from Open-Meteo at import commit time and never fails the import: when the provider is unavailable, environmental fields stay null and fuel falls back to the SOG-based estimate. Configure the endpoints and fuel assumptions through environment variables:
+
+```bash
+OPEN_METEO_WEATHER_URL=https://archive-api.open-meteo.com/v1/archive
+OPEN_METEO_MARINE_URL=https://marine-api.open-meteo.com/v1/marine
+FUEL_REFERENCE_SPEED_KNOTS=15
+FUEL_REFERENCE_RATE_TPD=150
+FUEL_PRICE_PER_TONNE=1000
+FUEL_CURRENCY=EUR
+```
 
 ## Documentation
 

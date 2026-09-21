@@ -4,7 +4,7 @@ export type Metric = {
   key: string
   label: string
   unit: string
-  origin: 'measured' | 'estimated'
+  origin: 'measured' | 'estimated' | 'environmental'
   source_column: string | null
   formula: string | null
   based_on: string[]
@@ -26,14 +26,21 @@ export type TrajectoryPoint = { timestamp: string; latitude_deg: number; longitu
 export type Trajectory = { imo: string; metric: Metric; start: string | null; end: string | null; segments: TrajectoryPoint[][] }
 export type SeriesPoint = { timestamp: string; value: number | null; missing: boolean }
 export type Series = { imo: string; metric: Metric; start: string | null; end: string | null; points: SeriesPoint[] }
-export type TelemetryRecord = { timestamp: string; latitude_deg: number; longitude_deg: number; sog_knots: number; course_deg: number | null; heading_deg: number | null; estimated_rpm: number; estimated_fuel_tpd: number; metrics: Record<string, number>; missing_fields: string[] }
+export type TelemetryRecord = { timestamp: string; latitude_deg: number; longitude_deg: number; sog_knots: number; course_deg: number | null; heading_deg: number | null; estimated_rpm: number; estimated_fuel_tpd: number; stw_knots: number | null; stw_source: string | null; current_along_heading_knots: number | null; wind_speed_knots: number | null; wind_direction_deg: number | null; wave_height_m: number | null; wave_direction_deg: number | null; wave_period_s: number | null; current_speed_knots: number | null; current_direction_deg: number | null; weather_factor: number | null; metrics: Record<string, number>; missing_fields: string[] }
 export type Telemetry = { imo: string; start: string | null; end: string | null; records: TelemetryRecord[] }
+
+export type WeatherSummary = { mean_wave_height_m: number | null; max_wave_height_m: number | null; mean_weather_factor: number | null }
+export type WeatherImpact = { adjusted_fuel_tonnes: number; adjusted_fuel_cost: number; wind_percent: number | null; wave_percent: number | null; total_percent: number | null }
+export type Performance = { imo: string; start: string | null; end: string | null; distance_nm: number; fuel_tonnes: number; fuel_cost: number; fuel_currency: string; fuel_efficiency_nm_per_tonne: number | null; fuel_consumption_t_per_100nm: number | null; fuel_cost_per_nm: number | null; weather: WeatherSummary; weather_impact: WeatherImpact }
+export type EnvironmentPoint = { timestamp: string; wind_speed_knots: number | null; wind_direction_deg: number | null; wave_height_m: number | null; wave_direction_deg: number | null; wave_period_s: number | null; current_speed_knots: number | null; current_direction_deg: number | null; weather_factor: number | null; missing: boolean }
+export type Environment = { imo: string; start: string | null; end: string | null; records: EnvironmentPoint[] }
 export type ImportSession = { session_id: string; status: string; files: Array<{ filename: string; headers: string[]; delimiter: string; row_count: number; warnings: string[] }> }
 export type ImportColumn = { source_column: string; semantic_field: string | null; detected_unit: string | null; requires_unit_mapping: boolean }
 export type ImportPreview = { session_id: string; status: string; files: Array<{ filename: string; source_columns: string[]; columns: ImportColumn[]; row_count: number; timestamp_range: [string, string] | null; null_counts: Record<string, number>; sample_rows: Array<Record<string, string>>; warnings: string[]; fields_requiring_confirmation: string[] }> }
 export type ImportFileMapping = { semantic_fields: Record<string, string>; unit_overrides: Record<string, string> }
 export type ImportMapping = Record<string, ImportFileMapping>
-export type ImportValidation = { session_id: string; status: string; errors: string[]; warnings: string[]; normalized_columns: Record<string, string[]>; estimated_metrics: string[]; rows_accepted: number; rows_rejected: number }
+export type ImportIssue = { severity: 'error' | 'warning' | 'information'; code: string; message: string; file: string | null; column: string | null; row_number: number | null }
+export type ImportValidation = { session_id: string; status: string; issues: ImportIssue[]; normalized_columns: Record<string, string[]>; estimated_metrics: string[]; rows_accepted: number; rows_rejected: number }
 
 async function getJson<T>(path: string): Promise<T> {
   const response = await fetch(path, { headers: { Accept: 'application/json' } })
@@ -80,6 +87,20 @@ export function getSeries(imo: string, metric: string, start: string, end: strin
   if (end) params.set('end', end)
   params.set('max_points', String(maxPoints))
   return getJson<Series>(`/api/vessels/${encodeURIComponent(imo)}/series/${encodeURIComponent(metric)}?${params}`)
+}
+
+export function getPerformance(imo: string, start: string, end: string) {
+  const params = new URLSearchParams()
+  if (start) params.set('start', start)
+  if (end) params.set('end', end)
+  return getJson<Performance>(`/api/vessels/${encodeURIComponent(imo)}/performance?${params}`)
+}
+
+export function getEnvironment(imo: string, start: string, end: string) {
+  const params = new URLSearchParams()
+  if (start) params.set('start', start)
+  if (end) params.set('end', end)
+  return getJson<Environment>(`/api/vessels/${encodeURIComponent(imo)}/environment?${params}`)
 }
 
 export async function startImport(files: File[]) {

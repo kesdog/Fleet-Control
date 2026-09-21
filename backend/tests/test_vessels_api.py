@@ -41,12 +41,22 @@ def test_vessel_summary_and_metadata_contracts(client: TestClient) -> None:
             "sample_count": 2,
             "available_metrics": [
                 "course",
+                "current_along_heading",
+                "current_direction",
+                "current_speed",
                 "fuel_tpd",
                 "latitude_deg",
                 "longitude_deg",
                 "roll_motion_deg",
                 "rpm",
                 "sog",
+                "stw",
+                "wave_direction",
+                "wave_height",
+                "wave_period",
+                "weather_factor",
+                "wind_direction",
+                "wind_speed",
             ],
         }
     ]
@@ -60,9 +70,9 @@ def test_vessel_summary_and_metadata_contracts(client: TestClient) -> None:
         "unit": "rpm",
         "origin": "estimated",
         "source_column": None,
-        "formula": "4 × SOG",
-        "based_on": ["sog"],
-        "warning": "Estimated from Speed Over Ground; not measured RPM.",
+        "formula": "4 × STW",
+        "based_on": ["stw"],
+        "warning": "Estimated from Speed Through Water; not measured RPM.",
     }
 
     metrics = client.get("/api/vessels/IMO6001/metrics")

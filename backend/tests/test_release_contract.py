@@ -1,12 +1,12 @@
 from fastapi.testclient import TestClient
 
 
-def test_openapi_publishes_complete_v08_route_surface(client: TestClient) -> None:
+def test_openapi_publishes_complete_route_surface(client: TestClient) -> None:
     response = client.get("/openapi.json")
 
     assert response.status_code == 200
     document = response.json()
-    assert document["info"]["version"] == "0.8.0"
+    assert document["info"]["version"] == "0.17.0"
     assert {tag["name"] for tag in document["tags"]} == {"health", "imports", "vessels"}
     assert {
         "/api/health",
@@ -22,6 +22,8 @@ def test_openapi_publishes_complete_v08_route_surface(client: TestClient) -> Non
         "/api/vessels/{imo}/telemetry",
         "/api/vessels/{imo}/trajectory",
         "/api/vessels/{imo}/series/{metric}",
+        "/api/vessels/{imo}/environment",
+        "/api/vessels/{imo}/performance",
     }.issubset(document["paths"])
 
 

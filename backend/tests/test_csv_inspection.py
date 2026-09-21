@@ -4,7 +4,7 @@ import pytest
 
 from app.importers.column_detector import SemanticField
 from app.importers.csv_reader import CsvReadError, inspect_csv
-from app.importers.validator import validate_inspection
+from app.importers.validator import validate_inspections
 
 
 def test_inspects_delimiter_columns_and_types(tmp_path: Path) -> None:
@@ -29,7 +29,7 @@ def test_inspects_delimiter_columns_and_types(tmp_path: Path) -> None:
         SemanticField.LONGITUDE,
         SemanticField.SOG,
     }
-    assert validate_inspection(inspection).is_valid
+    assert validate_inspections([("telemetry.csv", inspection)], {}).is_valid
 
 
 def test_empty_csv_is_rejected(tmp_path: Path) -> None:

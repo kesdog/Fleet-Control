@@ -5,7 +5,13 @@ from pathlib import Path
 
 from app.importers.column_detector import SemanticField, extract_unit
 from app.importers.csv_reader import CsvInspection, CsvReadError, inspect_csv
-from app.importers.unit_converter import UnitConversionError, convert_speed_to_knots
+from app.importers.unit_converter import convert_speed_to_knots
+from app.importers.validator import (
+    IssueSeverity,
+    ValidationIssue,
+    resolve_columns,
+    validate_inspections,
+)
 from app.schemas.imports import FileMapping
 
 
@@ -38,8 +44,7 @@ class NormalizedSample:
 class NormalizedImport:
     samples: tuple[NormalizedSample, ...]
     metric_definitions: tuple[MetricDefinition, ...]
-    errors: tuple[str, ...]
-    warnings: tuple[str, ...]
+    issues: tuple[ValidationIssue, ...]
     normalized_columns: dict[str, list[str]]
     rows_rejected: int
 
@@ -47,58 +52,56 @@ class NormalizedImport:
 def normalize_import(
     files: list[tuple[str, Path]], mappings: dict[str, FileMapping]
 ) -> NormalizedImport:
-    """Read staged files, normalize GPS rows, and merge optional metrics by timestamp."""
-    errors: list[str] = []
-    warnings: list[str] = []
-    normalized_columns: dict[str, list[str]] = {}
+    """Validate staged files, then normalize GPS rows and merge optional metrics by timestamp."""
+    inspections: list[tuple[str, CsvInspection]] = []
+    read_issues: list[ValidationIssue] = []
+    for filename, path in files:
+        try:
+            inspections.append((filename, inspect_csv(path)))
+        except CsvReadError as error:
+            read_issues.append(
+                ValidationIssue(IssueSeverity.ERROR, "csv_read_error", str(error), file=filename)
+            )
+
+    validation = validate_inspections(inspections, mappings, read_issues)
+    if not validation.is_valid:
+        return NormalizedImport(
+            samples=(),
+            metric_definitions=(),
+            issues=validation.issues,
+            normalized_columns=validation.normalized_columns,
+            rows_rejected=validation.rows_rejected,
+        )
+
+    issues = list(validation.issues)
     gps_rows: dict[datetime, NormalizedSample] = {}
     motion_rows: dict[datetime, dict[str, float]] = {}
     metric_definitions: dict[str, MetricDefinition] = {}
-    rows_rejected = 0
-    gps_files = 0
 
-    for filename, path in files:
-        try:
-            inspection = inspect_csv(path)
-        except CsvReadError as error:
-            errors.append(f"{filename}: {error}")
-            continue
-
-        field_columns, mapping_errors = _resolve_columns(
-            inspection, mappings.get(filename, FileMapping())
+    for filename, inspection in inspections:
+        columns, _ = resolve_columns(inspection, mappings.get(filename, FileMapping()))
+        is_gps = (
+            SemanticField.LATITUDE in columns or SemanticField.LONGITUDE in columns
         )
-        errors.extend(f"{filename}: {error}" for error in mapping_errors)
-        normalized_columns[filename] = [field.value for field in field_columns]
-        is_gps = SemanticField.LATITUDE in field_columns or SemanticField.LONGITUDE in field_columns
         if is_gps:
-            gps_files += 1
-            rejected = _normalize_gps_rows(
+            _normalize_gps_rows(
                 filename,
                 inspection,
-                field_columns,
+                columns,
                 mappings.get(filename, FileMapping()),
                 gps_rows,
                 metric_definitions,
-                errors,
-                warnings,
+                issues,
             )
-            rows_rejected += rejected
         else:
-            rejected = _normalize_motion_rows(
+            _normalize_motion_rows(
                 filename,
                 inspection,
-                field_columns,
+                columns,
                 motion_rows,
                 metric_definitions,
-                errors,
-                warnings,
+                issues,
             )
-            rows_rejected += rejected
-
-    if gps_files != 1:
-        errors.append("Exactly one GPS file with latitude and longitude columns is required.")
-    if not gps_rows:
-        errors.append("No valid GPS rows are available for import.")
 
     samples: list[NormalizedSample] = []
     missing_motion_rows = 0
@@ -121,41 +124,38 @@ def normalize_import(
         )
     unmatched_motion_rows = len(set(motion_rows) - set(gps_rows))
     if missing_motion_rows:
-        warnings.append(f"{missing_motion_rows} GPS rows have no matching motion timestamp.")
+        issues.append(
+            ValidationIssue(
+                IssueSeverity.WARNING,
+                "gps_without_matching_motion",
+                f"{missing_motion_rows} GPS rows have no matching motion timestamp.",
+            )
+        )
     if unmatched_motion_rows:
-        warnings.append(f"{unmatched_motion_rows} motion rows have no matching GPS timestamp.")
+        issues.append(
+            ValidationIssue(
+                IssueSeverity.WARNING,
+                "motion_without_matching_gps",
+                f"{unmatched_motion_rows} motion rows have no matching GPS timestamp.",
+            )
+        )
 
     metric_definitions.update(_estimated_metric_definitions())
+    metric_definitions.update(_environmental_metric_definitions())
+    issues.append(
+        ValidationIssue(
+            IssueSeverity.INFORMATION,
+            "estimated_metrics_generated",
+            "Estimated metrics will be generated: rpm, fuel_tpd.",
+        )
+    )
     return NormalizedImport(
         samples=tuple(samples),
         metric_definitions=tuple(metric_definitions.values()),
-        errors=tuple(errors),
-        warnings=tuple(warnings),
-        normalized_columns=normalized_columns,
-        rows_rejected=rows_rejected,
+        issues=tuple(issues),
+        normalized_columns=validation.normalized_columns,
+        rows_rejected=validation.rows_rejected,
     )
-
-
-def _resolve_columns(
-    inspection: CsvInspection, mapping: FileMapping
-) -> tuple[dict[SemanticField, str], list[str]]:
-    columns = {
-        column.semantic_field: column.source_column
-        for column in inspection.columns
-        if column.semantic_field is not None
-    }
-    errors: list[str] = []
-    for source_column, semantic_name in mapping.semantic_fields.items():
-        if source_column not in inspection.headers:
-            errors.append(f"Mapping references missing source column {source_column!r}.")
-            continue
-        try:
-            semantic_field = SemanticField(semantic_name)
-        except ValueError:
-            errors.append(f"Mapping uses unsupported semantic field {semantic_name!r}.")
-            continue
-        columns[semantic_field] = source_column
-    return columns, errors
 
 
 def _normalize_gps_rows(
@@ -165,47 +165,30 @@ def _normalize_gps_rows(
     mapping: FileMapping,
     gps_rows: dict[datetime, NormalizedSample],
     metric_definitions: dict[str, MetricDefinition],
-    errors: list[str],
-    warnings: list[str],
-) -> int:
-    required_fields = (
-        SemanticField.TIMESTAMP,
-        SemanticField.LATITUDE,
-        SemanticField.LONGITUDE,
-        SemanticField.SOG,
-    )
-    missing = [field.value for field in required_fields if field not in columns]
-    if missing:
-        errors.append(f"{filename}: missing required GPS columns: {', '.join(missing)}.")
-        return inspection.row_count
-
+    issues: list[ValidationIssue],
+) -> None:
+    # Validation has already confirmed required columns, units, ranges, and uniqueness.
     speed_column = columns[SemanticField.SOG]
     speed_unit = mapping.unit_overrides.get(speed_column, extract_unit(speed_column))
-    try:
-        convert_speed_to_knots(1.0, speed_unit)
-    except UnitConversionError as error:
-        errors.append(f"{filename}: {error}")
-        return inspection.row_count
-
     _add_navigation_metric_definitions(columns, metric_definitions)
-    rejected = 0
+
     for row_number, row in enumerate(inspection.rows, start=2):
         try:
             timestamp = _timestamp(row[columns[SemanticField.TIMESTAMP]])
             latitude = _number(row[columns[SemanticField.LATITUDE]])
             longitude = _number(row[columns[SemanticField.LONGITUDE]])
             speed = convert_speed_to_knots(_number(row[speed_column]), speed_unit)
-            if not -90 <= latitude <= 90 or not -180 <= longitude <= 180 or speed < 0:
-                raise ValueError("latitude, longitude, or speed is outside its allowed range")
-        except (UnitConversionError, ValueError) as error:
-            warnings.append(f"{filename} row {row_number}: rejected ({error}).")
-            rejected += 1
-            continue
-        if timestamp in gps_rows:
-            errors.append(
-                f"{filename} row {row_number}: duplicate GPS timestamp {timestamp.isoformat()}."
+        except ValueError as error:
+            # Defensive only: validated rows should always parse.
+            issues.append(
+                ValidationIssue(
+                    IssueSeverity.WARNING,
+                    "row_skipped",
+                    f"{filename} row {row_number}: skipped ({error}).",
+                    file=filename,
+                    row_number=row_number,
+                )
             )
-            rejected += 1
             continue
 
         course = _optional_number(row.get(columns.get(SemanticField.COURSE, ""), ""))
@@ -221,7 +204,6 @@ def _normalize_gps_rows(
             estimated_fuel_tpd=150 * (speed / 15) ** 3,
             metrics={},
         )
-    return rejected
 
 
 def _normalize_motion_rows(
@@ -230,13 +212,11 @@ def _normalize_motion_rows(
     columns: dict[SemanticField, str],
     motion_rows: dict[datetime, dict[str, float]],
     metric_definitions: dict[str, MetricDefinition],
-    errors: list[str],
-    warnings: list[str],
-) -> int:
+    issues: list[ValidationIssue],
+) -> None:
     timestamp_column = columns.get(SemanticField.TIMESTAMP)
     if timestamp_column is None:
-        errors.append(f"{filename}: missing timestamp column.")
-        return inspection.row_count
+        return
 
     metric_columns = [header for header in inspection.headers if header != timestamp_column]
     keys = _metric_keys(metric_columns)
@@ -249,27 +229,17 @@ def _normalize_motion_rows(
             source_column=header,
         )
 
-    rejected = 0
     for row_number, row in enumerate(inspection.rows, start=2):
         try:
             timestamp = _timestamp(row[timestamp_column])
-        except ValueError as error:
-            warnings.append(f"{filename} row {row_number}: rejected ({error}).")
-            rejected += 1
+        except ValueError:
             continue
-        if timestamp in motion_rows:
-            errors.append(
-                f"{filename} row {row_number}: duplicate motion timestamp {timestamp.isoformat()}."
-            )
-            rejected += 1
-            continue
-        values = {
-            keys[header]: value
-            for header in metric_columns
-            if (value := _optional_number(row[header])) is not None
-        }
+        values: dict[str, float] = {}
+        for header in metric_columns:
+            value = _optional_number(row[header])
+            if value is not None:
+                values[keys[header]] = value
         motion_rows[timestamp] = values
-    return rejected
 
 
 def _timestamp(value: str) -> datetime:
@@ -329,9 +299,9 @@ def _estimated_metric_definitions() -> dict[str, MetricDefinition]:
             unit="rpm",
             origin="estimated",
             source_column=None,
-            formula="4 × SOG",
-            based_on=("sog",),
-            warning="Estimated from Speed Over Ground; not measured RPM.",
+            formula="4 × STW",
+            based_on=("stw",),
+            warning="Estimated from Speed Through Water; not measured RPM.",
         ),
         "fuel_tpd": MetricDefinition(
             key="fuel_tpd",
@@ -339,8 +309,104 @@ def _estimated_metric_definitions() -> dict[str, MetricDefinition]:
             unit="tonnes/day",
             origin="estimated",
             source_column=None,
-            formula="150 × (SOG / 15)^3",
-            based_on=("sog",),
-            warning="Estimated from Speed Over Ground; not measured fuel consumption.",
+            formula="150 × (STW / 15)^3",
+            based_on=("stw",),
+            warning="Estimated from Speed Through Water; not measured fuel consumption.",
+        ),
+        "stw": MetricDefinition(
+            key="stw",
+            display_name="Speed Through Water",
+            unit="knots",
+            origin="estimated",
+            source_column=None,
+            formula="SOG − current along heading",
+            based_on=("sog", "current"),
+            warning=(
+                "Estimated from SOG and the ocean-current projection; "
+                "falls back to SOG without current data."
+            ),
+        ),
+        "current_along_heading": MetricDefinition(
+            key="current_along_heading",
+            display_name="Current Along Heading",
+            unit="knots",
+            origin="estimated",
+            source_column=None,
+            formula="current × cos(direction − heading)",
+            based_on=("current", "heading"),
+        ),
+        "weather_factor": MetricDefinition(
+            key="weather_factor",
+            display_name="Weather Factor",
+            unit="",
+            origin="estimated",
+            source_column=None,
+            formula="∛(Hs / 2)",
+            based_on=("wave_height",),
+            warning=(
+                "Environmental indicator derived from significant wave height; "
+                "not applied to fuel consumption."
+            ),
+        ),
+    }
+
+
+def _environmental_metric_definitions() -> dict[str, MetricDefinition]:
+    return {
+        "wind_speed": MetricDefinition(
+            key="wind_speed",
+            display_name="Wind Speed",
+            unit="knots",
+            origin="environmental",
+            source_column=None,
+            warning="External historical model data, not an onboard sensor measurement.",
+        ),
+        "wind_direction": MetricDefinition(
+            key="wind_direction",
+            display_name="Wind Direction",
+            unit="degrees",
+            origin="environmental",
+            source_column=None,
+            warning="External historical model data, not an onboard sensor measurement.",
+        ),
+        "wave_height": MetricDefinition(
+            key="wave_height",
+            display_name="Wave Height",
+            unit="metres",
+            origin="environmental",
+            source_column=None,
+            warning="External historical model data, not an onboard sensor measurement.",
+        ),
+        "wave_direction": MetricDefinition(
+            key="wave_direction",
+            display_name="Wave Direction",
+            unit="degrees",
+            origin="environmental",
+            source_column=None,
+            warning="External historical model data, not an onboard sensor measurement.",
+        ),
+        "wave_period": MetricDefinition(
+            key="wave_period",
+            display_name="Wave Period",
+            unit="seconds",
+            origin="environmental",
+            source_column=None,
+            warning="External historical model data, not an onboard sensor measurement.",
+        ),
+        "current_speed": MetricDefinition(
+            key="current_speed",
+            display_name="Ocean Current Speed",
+            unit="knots",
+            origin="environmental",
+            source_column=None,
+            warning="External historical model data, not an onboard sensor measurement.",
+        ),
+        "current_direction": MetricDefinition(
+            key="current_direction",
+            display_name="Ocean Current Direction",
+            unit="degrees",
+            origin="environmental",
+            source_column=None,
+            warning="External historical model data, not an onboard sensor measurement.",
         ),
     }

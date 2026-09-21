@@ -34,7 +34,7 @@ def test_cache_hydrates_immutable_samples_and_marks_missing_telemetry(client: Te
 
     assert entry is not None
     assert len(entry.samples) == 2
-    assert entry.metric_definitions[-1].key == "sog"
+    assert {metric.key for metric in entry.metric_definitions} >= {"sog", "rpm", "fuel_tpd", "stw"}
     assert entry.samples[0].missing_fields == frozenset({"heading"})
     assert entry.samples[1].missing_fields == frozenset({"course", "heading", "roll_motion_deg"})
     assert entry.samples[0].metrics == {"roll_motion_deg": 0.2}
