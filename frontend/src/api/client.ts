@@ -24,6 +24,8 @@ export type Vessel = VesselSummary & { metrics: Metric[] }
 
 export type TrajectoryPoint = { timestamp: string; latitude_deg: number; longitude_deg: number; metric_value: number | null; missing: boolean }
 export type Trajectory = { imo: string; metric: Metric; start: string | null; end: string | null; segments: TrajectoryPoint[][] }
+export type SeriesPoint = { timestamp: string; value: number | null; missing: boolean }
+export type Series = { imo: string; metric: Metric; start: string | null; end: string | null; points: SeriesPoint[] }
 export type TelemetryRecord = { timestamp: string; latitude_deg: number; longitude_deg: number; sog_knots: number; course_deg: number | null; heading_deg: number | null; estimated_rpm: number; estimated_fuel_tpd: number; metrics: Record<string, number>; missing_fields: string[] }
 export type Telemetry = { imo: string; start: string | null; end: string | null; records: TelemetryRecord[] }
 export type ImportSession = { session_id: string; status: string; files: Array<{ filename: string; headers: string[]; delimiter: string; row_count: number; warnings: string[] }> }
@@ -54,6 +56,14 @@ export function getTelemetry(imo: string, start: string, end: string) {
   if (start) params.set('start', start)
   if (end) params.set('end', end)
   return getJson<Telemetry>(`/api/vessels/${encodeURIComponent(imo)}/telemetry?${params}`)
+}
+
+export function getSeries(imo: string, metric: string, start: string, end: string, maxPoints = 3_000) {
+  const params = new URLSearchParams()
+  if (start) params.set('start', start)
+  if (end) params.set('end', end)
+  params.set('max_points', String(maxPoints))
+  return getJson<Series>(`/api/vessels/${encodeURIComponent(imo)}/series/${encodeURIComponent(metric)}?${params}`)
 }
 
 export async function startImport(files: File[]) {

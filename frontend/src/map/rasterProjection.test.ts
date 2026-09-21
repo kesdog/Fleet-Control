@@ -49,4 +49,22 @@ describe('raster projection', () => {
       expect(after.y - before.y).toBeCloseTo(-75, 7)
     }
   })
+
+  it('preserves the final camera when pointer movement is committed as one total drag', () => {
+    const camera = { latitude: 18, longitude: 172, zoom: 2.7 }
+    const movements = [[75, -24], [120, 45], [-18, 91]] as const
+    const incremental = movements.reduce(
+      (current, [deltaX, deltaY]) => dragRasterCamera(current, viewport, deltaX, deltaY),
+      camera,
+    )
+    const total = movements.reduce(
+      (result, [deltaX, deltaY]) => ({ x: result.x + deltaX, y: result.y + deltaY }),
+      { x: 0, y: 0 },
+    )
+    const committed = dragRasterCamera(camera, viewport, total.x, total.y)
+
+    expect(committed.latitude).toBeCloseTo(incremental.latitude, 10)
+    expect(committed.longitude).toBeCloseTo(incremental.longitude, 10)
+    expect(committed.zoom).toBe(incremental.zoom)
+  })
 })

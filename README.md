@@ -2,9 +2,9 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.12.0
+## Version 0.13.0
 
-This milestone provides the Python backend foundation plus deterministic CSV inspection:
+This milestone provides the Python backend, deterministic CSV inspection, and an operations frontend for map, replay, and chart telemetry review:
 
 - FastAPI application with a health endpoint.
 - SQLite database initialized automatically at startup.
@@ -24,8 +24,12 @@ This milestone provides the Python backend foundation plus deterministic CSV ins
 - Vite development proxy for the backend API and a desktop-first operations shell.
 - Vessel, metric, and available date-range controls backed by cache-read APIs.
 - Vessel metadata and measured/estimated metric details with backend-provided provenance.
-- MapLibre world basemap with selected-vessel trajectory rendering, reset/zoom controls, and automatic route bounds fitting.
+- Lightweight OpenStreetMap raster basemap with selected-vessel telemetry rendering and reset/zoom controls.
 - Browser-based CSV upload, validation, and commit flow for telemetry data.
+- Point-only vessel mapping: vessel positions come from returned telemetry observations, while server-provided trajectory segments remain the route source.
+- Date-filtered telemetry replay linked to the map and telemetry-frame table.
+- Apache ECharts telemetry trends with metric unit, measured/estimated provenance, tooltips, and a zoomable time range.
+- A collapsible fleet manifest to keep the map workspace focused during review.
 
 ## Run the frontend
 
@@ -39,13 +43,14 @@ npm run dev
 
 The frontend runs at `http://127.0.0.1:5173` and proxies `/api` requests to the FastAPI server at `http://127.0.0.1:8000`.
 
-The frontend uses MapLibre GL JS with the official MapLibre demonstration globe style and an OpenStreetMap tile base for resilient visible cartography. It sends the selected vessel, metric, and date range to the trajectory endpoint, renders the server-provided route segments, and fits the map to returned coordinates. The server is responsible for splitting routes at International Date Line crossings.
+The frontend uses native OpenStreetMap raster tiles with a canvas telemetry layer for responsive cartography without a second hidden rendering engine. It sends the selected vessel, metric, and a clamped date range to the telemetry endpoints, renders observation-backed vessel points, and preserves the map's authoritative camera and pan behavior. The same vessel, metric, and range drive the ECharts series endpoint and telemetry replay.
 
 Frontend structure:
 
 - `frontend/src/api/client.ts`: typed API entry points.
 - `frontend/src/components/FleetControls.tsx`: shared vessel, date, and metric filters.
-- `frontend/src/components/VesselMap.tsx`: MapLibre lifecycle, trajectory source, and map controls.
+- `frontend/src/components/VesselMap.tsx`: raster map lifecycle, canvas telemetry rendering, and map controls.
+- `frontend/src/components/TelemetryChart.tsx`: ECharts time-series view with provenance and range controls.
 - `frontend/src/components/VesselDetails.tsx`: backend-provided vessel and metric provenance.
 - `frontend/src/i18n.ts`: English/French resources and persisted language selection.
 

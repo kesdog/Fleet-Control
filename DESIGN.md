@@ -261,7 +261,7 @@ They are expected derived values, not errors.
 
 ## Map Design
 
-Use MapLibre for the base map.
+Use lightweight OpenStreetMap raster tiles for the base map.
 
 Keep map controls minimal:
 
