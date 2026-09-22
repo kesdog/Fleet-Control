@@ -1,6 +1,6 @@
 # Fleet Control Center Frontend
 
-The v0.18.0 frontend is a React + TypeScript Vite application for the Marine Fleet Control Center.
+The v0.20.0 frontend is a React + TypeScript Vite application for the Marine Fleet Control Center.
 
 It provides typed backend clients and TanStack Query wiring for a staged CSV import wizard, a collapsible fleet roster, telemetry replay, an interactive OSM map, and Apache ECharts time-series analysis. Import stages upload, preview detection, column/unit mapping, validation, review, and explicit create/replace commit. Closing an uncommitted wizard removes its staged backend session. The selected vessel, metric, and date range update map routes, observation-backed vessel points, replay frames, the telemetry table, and chart together. Replay frame count is configurable from 2 to 12 per day in Settings; source observations are sampled near evenly spaced slots, maintain the derived minimum spacing, and always finish on the selected range's final telemetry record. The map has native browser fullscreen mode; only in fullscreen does mouse-wheel input zoom the map and prevent document scrolling.
 

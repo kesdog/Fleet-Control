@@ -9,6 +9,7 @@ class Settings(BaseSettings):
 
     database_url: str = "sqlite:///./data/fleet.db"
     imports_directory: Path = Path("./data/imports")
+    logs_directory: Path = Path("./data/logs")
     cors_origins: list[str] = ["http://localhost:5173"]
 
     # Historical environmental data provider endpoints.
@@ -46,6 +47,9 @@ class Settings(BaseSettings):
     def ensure_imports_directory(self) -> None:
         # Each import session gets a child directory beneath this configured root.
         self.imports_directory.mkdir(parents=True, exist_ok=True)
+
+    def ensure_logs_directory(self) -> None:
+        self.logs_directory.mkdir(parents=True, exist_ok=True)
 
 
 @lru_cache

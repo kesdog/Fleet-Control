@@ -12,6 +12,7 @@ def settings(tmp_path: object) -> Settings:
     return Settings(
         database_url=f"sqlite:///{tmp_path}/test-fleet.db",
         imports_directory=tmp_path / "imports",
+        logs_directory=tmp_path / "logs",
         environment_enrichment_enabled=False,
     )
 

@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import Settings
 from app.db.models import EnvironmentalSample, ImportSession, Sample, Vessel, VesselMetric
+from app.errors import api_error
 from app.importers.csv_reader import CsvInspection, CsvReadError, inspect_csv
 from app.importers.normalizer import NormalizedImport, NormalizedSample, normalize_import
 from app.importers.validator import IssueSeverity, ValidationIssue
@@ -36,23 +37,26 @@ from app.services.environment_service import (
     fetch_environment_for_samples,
 )
 from app.services.fleet_cache import FleetCacheManager
+from app.services.import_audit import log_import_error, log_import_event
 from app.services.performance_service import calculate_fuel_rate_tpd, calculate_rpm, derive_stw
 
 
 async def create_import_session(
-    session: Session, imports_directory: Path, files: Iterable[UploadFile]
+    session: Session, imports_directory: Path, logs_directory: Path, files: Iterable[UploadFile]
 ) -> StartImportResponse:
     uploaded_files = list(files)
     if not uploaded_files:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="At least one CSV is required.",
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "import_files_required",
+            "At least one CSV is required.",
         )
     filenames = [_validated_filename(upload) for upload in uploaded_files]
     if len(filenames) != len(set(filenames)):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Uploaded CSV filenames must be unique within an import session.",
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "duplicate_import_filename",
+            "Uploaded CSV filenames must be unique within an import session.",
         )
 
     session_id = str(uuid4())
@@ -75,10 +79,15 @@ async def create_import_session(
         rmtree(session_directory, ignore_errors=True)
         if isinstance(error, HTTPException):
             raise error
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=str(error),
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "invalid_csv",
+            "CSV input could not be read.",
         ) from error
+    except Exception as error:
+        rmtree(session_directory, ignore_errors=True)
+        log_import_error(logs_directory, "create", error, session_id)
+        raise
 
     # This milestone stores only import metadata; vessel and sample tables remain untouched.
     import_session = ImportSession(
@@ -90,6 +99,9 @@ async def create_import_session(
     )
     session.add(import_session)
     session.commit()
+    log_import_event(
+        logs_directory, "created", session_id=session_id, status=ImportStatus.UPLOADED.value
+    )
 
     summaries = [
         UploadedFileSummary(
@@ -127,9 +139,10 @@ def update_mapping(
     filenames = {file["filename"] for file in _source_files(import_session)}
     unknown_files = set(payload.files) - filenames
     if unknown_files:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=f"Mapping references unknown files: {', '.join(sorted(unknown_files))}.",
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "unknown_mapping_file",
+            "Mapping references an uploaded file that does not exist.",
         )
 
     # Persist caller choices as JSON for validation and commit steps in later milestones.
@@ -147,10 +160,14 @@ def update_mapping(
 
 
 def validate_import_session(
-    session: Session, imports_directory: Path, session_id: str
+    session: Session, imports_directory: Path, logs_directory: Path, session_id: str
 ) -> ImportValidationResponse:
     import_session = _get_active_session(session, session_id)
-    normalized = _normalize_session(import_session, imports_directory)
+    try:
+        normalized = _normalize_session(import_session, imports_directory)
+    except Exception as error:
+        log_import_error(logs_directory, "validate", error, session_id)
+        raise
     response = _validation_response(session_id, normalized)
     import_session.validation_result = response.model_dump(mode="json")
     import_session.status = (
@@ -159,12 +176,20 @@ def validate_import_session(
         else ImportStatus.FAILED.value
     )
     session.commit()
+    if import_session.status == ImportStatus.FAILED.value:
+        log_import_event(
+            logs_directory,
+            "validation_failure",
+            session_id=session_id,
+            status=import_session.status,
+        )
     return response
 
 
 def commit_import_session(
     session: Session,
     imports_directory: Path,
+    logs_directory: Path,
     session_id: str,
     request: CommitImportRequest,
     fleet_cache: FleetCacheManager,
@@ -173,26 +198,25 @@ def commit_import_session(
 ) -> CommitImportResponse:
     import_session = _get_active_session(session, session_id)
     if import_session.status != ImportStatus.VALIDATED.value:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Import session must pass validation before commit.",
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            "import_not_validated",
+            "Import session must pass validation before commit.",
         )
     normalized = _normalize_session(import_session, imports_directory)
     if _has_blocking_errors(normalized):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="; ".join(
-                issue.message
-                for issue in normalized.issues
-                if issue.severity is IssueSeverity.ERROR
-            ),
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "import_validation_failed",
+            "Import validation has blocking errors.",
         )
 
     existing_vessel = session.scalar(select(Vessel).where(Vessel.imo == request.imo))
     if existing_vessel is not None and request.mode.value == "CREATE":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Vessel {request.imo} already exists; use REPLACE to overwrite it.",
+        raise api_error(
+            status.HTTP_409_CONFLICT,
+            "vessel_already_exists",
+            "Vessel already exists; use REPLACE to overwrite it.",
         )
 
     # Commit telemetry first; environmental data arrives asynchronously in production.
@@ -285,7 +309,20 @@ def commit_import_session(
         committed_session.status = import_session.status
 
     # Cache replacement happens strictly after SQLite commits, so failed writes cannot affect reads.
-    fleet_cache.refresh_vessel(session, request.imo)
+    try:
+        fleet_cache.refresh_vessel(session, request.imo)
+    except Exception as error:
+        log_import_error(logs_directory, "cache_refresh", error, session_id)
+        raise
+    # The background worker receives normalized data by value; uploads are no longer needed.
+    try:
+        rmtree(imports_directory / session_id)
+    except OSError as error:
+        log_import_error(logs_directory, "cleanup", error, session_id)
+        raise
+    log_import_event(
+        logs_directory, "committed", session_id=session_id, status=import_session.status
+    )
     if settings.environment_enrichment_enabled:
         Thread(
             target=_enrich_committed_vessel,
@@ -373,19 +410,30 @@ def import_progress(session: Session, session_id: str) -> ImportProgressResponse
     )
 
 
-def cancel_import_session(session: Session, imports_directory: Path, session_id: str) -> None:
+def cancel_import_session(
+    session: Session, imports_directory: Path, logs_directory: Path, session_id: str
+) -> None:
     import_session = _get_active_session(session, session_id)
     session.delete(import_session)
     session.commit()
     # Delete disk artifacts only after the database no longer exposes the session.
-    rmtree(imports_directory / session_id, ignore_errors=True)
+    try:
+        rmtree(imports_directory / session_id, ignore_errors=True)
+    except OSError as error:
+        log_import_error(logs_directory, "cancel_cleanup", error, session_id)
+        raise
+    log_import_event(
+        logs_directory, "cancelled", session_id=session_id, status=ImportStatus.CANCELLED.value
+    )
 
 
 def _get_active_session(session: Session, session_id: str) -> ImportSession:
     import_session = session.get(ImportSession, session_id)
     if import_session is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Import session not found."
+        raise api_error(
+            status.HTTP_404_NOT_FOUND,
+            "import_session_not_found",
+            "Import session was not found.",
         )
     return import_session
 
@@ -502,9 +550,10 @@ def _validated_filename(upload: UploadFile) -> str:
     # Discard any client-supplied path components before building a filesystem path.
     filename = Path(upload.filename or "").name
     if not filename.lower().endswith(".csv"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail="Only .csv files are supported.",
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "unsupported_import_file",
+            "Only .csv files are supported.",
         )
     return filename
 
@@ -523,9 +572,10 @@ def _preview_file(path: Path, filename: str) -> FilePreview:
     try:
         inspection = inspect_csv(path)
     except CsvReadError as error:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail=str(error),
+        raise api_error(
+            status.HTTP_422_UNPROCESSABLE_CONTENT,
+            "invalid_csv",
+            "CSV input could not be read.",
         ) from error
 
     warnings = _inspection_warnings(inspection)

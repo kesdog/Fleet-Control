@@ -55,7 +55,10 @@ async def start_import(
     settings: Annotated[Settings, Depends(get_runtime_settings)],
 ) -> StartImportResponse:
     settings.ensure_imports_directory()
-    return await create_import_session(session, settings.imports_directory, files)
+    settings.ensure_logs_directory()
+    return await create_import_session(
+        session, settings.imports_directory, settings.logs_directory, files
+    )
 
 
 @router.get("/{session_id}/preview", response_model=ImportPreviewResponse)
@@ -82,7 +85,9 @@ def validate_import(
     session: Annotated[Session, Depends(get_database_session)],
     settings: Annotated[Settings, Depends(get_runtime_settings)],
 ) -> ImportValidationResponse:
-    return validate_import_session(session, settings.imports_directory, session_id)
+    return validate_import_session(
+        session, settings.imports_directory, settings.logs_directory, session_id
+    )
 
 
 @router.post("/{session_id}/commit", response_model=CommitImportResponse)
@@ -97,6 +102,7 @@ def commit_import(
     return commit_import_session(
         session,
         settings.imports_directory,
+        settings.logs_directory,
         session_id,
         payload,
         fleet_cache,
@@ -119,5 +125,5 @@ def cancel_import(
     session: Annotated[Session, Depends(get_database_session)],
     settings: Annotated[Settings, Depends(get_runtime_settings)],
 ) -> Response:
-    cancel_import_session(session, settings.imports_directory, session_id)
+    cancel_import_session(session, settings.imports_directory, settings.logs_directory, session_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

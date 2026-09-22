@@ -1,0 +1,27 @@
+# Marine Fleet Control Center
+
+Marine Fleet Control Center is a read-only operational review API for imported vessel GPS, motion, and environmental telemetry. It stores normalized telemetry in an immutable in-memory fleet cache and exposes JSON API responses.
+
+## Start Here
+
+- Machine-readable agent guide: `GET /api/agents/docs`
+- Full OpenAPI contract: `GET /openapi.json`
+- Interactive API documentation: `GET /docs`
+- Application API reference in this repository: `docs/api.md`
+
+## Agent Workflow
+
+1. Discover available vessels with `GET /api/vessels`. Each item provides its `imo`, `name`, available telemetry window, and metric keys.
+2. Request a compact report with `GET /api/agents/report?imo=IMO1234567`.
+3. Repeat `imo` to report on multiple vessels: `GET /api/agents/report?imo=IMO1234567&imo=IMO7654321`.
+4. Optionally constrain reports with ISO-8601 `start` and `end` query parameters. Missing bounds default to each vessel's available cache range.
+
+## Report Contract
+
+The agent report contains application context and one report per requested vessel. Each report includes vessel identity, selected window, sample count, metric metadata, aggregate data-quality counts, and voyage performance/weather summaries. It deliberately excludes raw telemetry records.
+
+All API responses, including errors, are JSON. The report route preserves normal HTTP errors: `400` for an invalid date order, `404` for an unknown IMO, `416` for a window outside available telemetry, `422` for invalid parameters, and `429` for rate limiting.
+
+## Limits And Access
+
+No authentication is required in the current iteration. `GET /api/agents/report` has a process-wide limit of 15 requests per minute and returns a `Retry-After` header when limited. Future authenticated deployments will replace this with per-user token buckets.

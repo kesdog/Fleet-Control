@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { cancelImport, commitImport, previewImport, startImport, updateImportMapping, validateImport } from './client'
+import { cancelImport, commitImport, getVessels, previewImport, startImport, updateImportMapping, validateImport } from './client'
 
 const response = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } })
 
@@ -41,5 +41,16 @@ describe('import API client', () => {
   it('surfaces backend validation detail to the wizard', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ detail: 'Import session must pass validation before commit.' }, 409)))
     await expect(commitImport('session-1', 'IMO123', '', 'CREATE')).rejects.toThrow('Import session must pass validation before commit.')
+  })
+
+  it('normalizes structured, non-JSON, and network failures', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(response({ detail: { code: 'vessel_not_found', message: 'Vessel IMO404 was not found.' } }, 404))
+      .mockResolvedValueOnce(new Response('Proxy unavailable', { status: 503 }))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch')))
+
+    await expect(getVessels()).rejects.toMatchObject({ code: 'vessel_not_found', status: 404 })
+    await expect(getVessels()).rejects.toMatchObject({ message: 'Request failed: 503', status: 503 })
+    await expect(getVessels()).rejects.toMatchObject({ code: 'network_error' })
   })
 })

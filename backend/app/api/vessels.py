@@ -1,9 +1,10 @@
 from datetime import UTC, datetime
 from typing import Annotated, cast
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Query, Request, status
 
 from app.config import Settings
+from app.errors import api_error
 from app.schemas.performance import (
     EnvironmentPointResponse,
     EnvironmentResponse,
@@ -233,9 +234,7 @@ def get_series(
 def _require_vessel(cache: FleetCacheManager, imo: str) -> VesselCacheEntry:
     entry = cache.snapshot.get(imo)
     if entry is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Vessel {imo} was not found."
-        )
+        raise api_error(status.HTTP_404_NOT_FOUND, "vessel_not_found", "Vessel was not found.")
     return entry
 
 
@@ -243,9 +242,8 @@ def _require_metric(entry: VesselCacheEntry, key: str) -> MetricCacheEntry:
     for metric in entry.metric_definitions:
         if metric.key == key:
             return metric
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail=f"Metric {key!r} is not available for vessel {entry.imo}.",
+    raise api_error(
+        status.HTTP_404_NOT_FOUND, "metric_not_found", "Metric is not available for vessel."
     )
 
 
@@ -253,21 +251,24 @@ def _validate_range(
     entry: VesselCacheEntry, start: datetime | None, end: datetime | None
 ) -> None:
     if start is not None and end is not None and end < start:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The end timestamp must not be before the start timestamp.",
+        raise api_error(
+            status.HTTP_400_BAD_REQUEST,
+            "invalid_time_range",
+            "The end timestamp must not be before the start timestamp.",
         )
     if entry.min_timestamp is None or entry.max_timestamp is None:
-        raise HTTPException(
-            status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE,
-            detail="The vessel has no telemetry available.",
+        raise api_error(
+            status.HTTP_416_RANGE_NOT_SATISFIABLE,
+            "telemetry_unavailable",
+            "The vessel has no telemetry available.",
         )
     if (start is not None and not entry.min_timestamp <= start <= entry.max_timestamp) or (
         end is not None and not entry.min_timestamp <= end <= entry.max_timestamp
     ):
-        raise HTTPException(
-            status_code=status.HTTP_416_RANGE_NOT_SATISFIABLE,
-            detail="The requested range is outside available telemetry.",
+        raise api_error(
+            status.HTTP_416_RANGE_NOT_SATISFIABLE,
+            "telemetry_range_unavailable",
+            "The requested range is outside available telemetry.",
         )
 
 

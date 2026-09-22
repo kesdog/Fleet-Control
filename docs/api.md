@@ -60,6 +60,16 @@ Use `mode: "REPLACE"` only to explicitly replace an existing vessel. `DELETE /ap
 
 `GET /api/vessels/{imo}/telemetry?start=2026-03-01T00:15:00&end=2026-03-02T00:15:00` returns normalized records. Each record includes `missing_fields`, separate from estimated fields.
 
+## Agent Report API
+
+`GET /api/agents/docs` returns JSON documentation for agent clients, including fleet-discovery and report examples. Use `GET /api/vessels` to discover current vessel IMOs and names before requesting a report. The repository's root `llms.txt` is a concise LLM-oriented guide that links to this endpoint and the OpenAPI contract.
+
+`GET /api/agents/report?imo=IMO1&imo=IMO2&start=2026-03-01T00:15:00&end=2026-03-07T00:15:00` returns cache-backed, read-only vessel report summaries for AI agents. Repeat `imo` to request multiple vessels. At least one `imo` is required; omitted `start` or `end` defaults to that vessel's available telemetry boundary.
+
+Each response includes an application description and one report per requested vessel. Reports contain metric metadata, selected-range sample counts, aggregate data-quality counts, and voyage-performance and weather totals. Raw telemetry records are intentionally excluded.
+
+The endpoint has a process-wide limit of 15 requests per minute and returns `429` with a `Retry-After` header when exceeded. It will move to per-user bucket limiting when authentication is introduced.
+
 ## Visualization API
 
 `GET /api/vessels/{imo}/trajectory?metric=sog&max_points=2000` returns map-ready segments. The server splits International Date Line crossings.
@@ -106,3 +116,4 @@ Environmental metrics (`stw`, `wind_speed`, `wave_height`, `wave_period`, `curre
 - `409`: import commit attempted before validation, or `CREATE` conflicts with an existing IMO.
 - `416`: requested telemetry window is outside the available range.
 - `422`: invalid request, CSV, mapping, or validation input.
+- `429`: agent report rate limit exceeded.

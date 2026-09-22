@@ -6,10 +6,17 @@ def test_openapi_publishes_complete_route_surface(client: TestClient) -> None:
 
     assert response.status_code == 200
     document = response.json()
-    assert document["info"]["version"] == "0.18.0"
-    assert {tag["name"] for tag in document["tags"]} == {"health", "imports", "vessels"}
+    assert document["info"]["version"] == "0.20.0"
+    assert {tag["name"] for tag in document["tags"]} == {
+        "agents",
+        "health",
+        "imports",
+        "vessels",
+    }
     assert {
         "/api/health",
+        "/api/agents/docs",
+        "/api/agents/report",
         "/api/imports",
         "/api/imports/{session_id}/preview",
         "/api/imports/{session_id}/mapping",
@@ -31,7 +38,9 @@ def test_application_errors_use_documented_detail_envelope(client: TestClient) -
     response = client.get("/api/vessels/UNKNOWN")
 
     assert response.status_code == 404
-    assert response.json() == {"detail": "Vessel UNKNOWN was not found."}
+    assert response.json() == {
+        "detail": {"code": "vessel_not_found", "message": "Vessel was not found."}
+    }
 
 
 def test_vite_development_origin_is_allowed_by_cors(client: TestClient) -> None:

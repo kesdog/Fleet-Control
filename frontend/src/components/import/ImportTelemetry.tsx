@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Check, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { cancelImport, commitImport, getImportProgress, previewImport, startImport, updateImportMapping, validateImport, type ImportMapping, type ImportPreview, type ImportProgress, type ImportValidation, type VesselSummary } from '../../api/client'
+import { asApiError } from '../../api/errors'
 import '../importTelemetry.css'
 import { UploadStep } from './UploadStep'
 import { DetectStep } from './DetectStep'
@@ -47,6 +48,11 @@ export function ImportTelemetry({ vessels, onClose, onCommitted, onNotify }: Imp
   const currentIndex = steps.indexOf(step)
   const replacing = vessels.some((vessel) => vessel.imo === imo.trim())
   const needsUnitConfirmation = preview?.files.some((file) => file.fields_requiring_confirmation.some((column) => !mapping[file.filename]?.unit_overrides[column])) ?? false
+  const notifyApiError = (error: unknown, fallbackKey: string) => {
+    const apiError = asApiError(error)
+    const key = apiError.code ? `apiErrors.${apiError.code}` : fallbackKey
+    onNotify(t(key, { defaultValue: apiError.message || t(fallbackKey) }), 'error')
+  }
 
   useEffect(() => {
     if (!committing || !sessionId) return
@@ -71,7 +77,7 @@ export function ImportTelemetry({ vessels, onClose, onCommitted, onNotify }: Imp
     if (busy) return
     if (sessionId) {
       try { await cancelImport(sessionId) }
-      catch (error) { onNotify(error instanceof Error ? error.message : t('import.discardError'), 'error') }
+      catch (error) { notifyApiError(error, 'import.discardError') }
     }
     onClose()
   }
@@ -91,7 +97,7 @@ export function ImportTelemetry({ vessels, onClose, onCommitted, onNotify }: Imp
       setMapping(defaultMapping(nextPreview))
       setStep('detect')
     } catch (error) {
-      onNotify(error instanceof Error ? error.message : t('import.uploadError'), 'error')
+      notifyApiError(error, 'import.uploadError')
     } finally { setBusy(false) }
   }
 
@@ -102,7 +108,7 @@ export function ImportTelemetry({ vessels, onClose, onCommitted, onNotify }: Imp
       await updateImportMapping(sessionId, mapping)
       setStep('validate')
     } catch (error) {
-      onNotify(error instanceof Error ? error.message : t('import.mappingError'), 'error')
+      notifyApiError(error, 'import.mappingError')
     } finally { setBusy(false) }
   }
 
@@ -116,7 +122,7 @@ export function ImportTelemetry({ vessels, onClose, onCommitted, onNotify }: Imp
       if (errors.length) onNotify(t('import.validationFailedToast', { count: errors.length }), 'error')
       else setStep('review')
     } catch (error) {
-      onNotify(error instanceof Error ? error.message : t('import.validationError'), 'error')
+      notifyApiError(error, 'import.validationError')
     } finally { setBusy(false) }
   }
 
@@ -131,7 +137,7 @@ export function ImportTelemetry({ vessels, onClose, onCommitted, onNotify }: Imp
        setEnrichmentProgress(null)
       onCommitted(result.imo, result.samples_imported)
     } catch (error) {
-      onNotify(error instanceof Error ? error.message : t('import.commitError'), 'error')
+      notifyApiError(error, 'import.commitError')
     } finally { setBusy(false); setCommitting(false) }
   }
 

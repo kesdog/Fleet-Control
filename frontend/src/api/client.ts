@@ -1,3 +1,5 @@
+import { toApiError } from './errors'
+
 export type HealthResponse = { status: 'ok' | 'degraded'; database: 'connected' | 'unavailable'; cache: 'initialized' | 'not_initialized' }
 
 export type Metric = {
@@ -43,43 +45,35 @@ export type ImportIssue = { severity: 'error' | 'warning' | 'information'; code:
 export type ImportValidation = { session_id: string; status: string; issues: ImportIssue[]; normalized_columns: Record<string, string[]>; estimated_metrics: string[]; rows_accepted: number; rows_rejected: number }
 export type ImportProgress = { session_id: string; status: 'VALIDATED' | 'ENRICHING' | 'COMMITTED' | 'FAILED'; imo: string | null; enrichment_days_completed: number; enrichment_days_total: number }
 
-async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(path, { headers: { Accept: 'application/json' } })
-  if (!response.ok) throw new Error(await responseMessage(response))
-  return response.json() as Promise<T>
-}
-
-async function responseMessage(response: Response) {
-  const fallback = `Request failed: ${response.status}`
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
-    const body = await response.json() as { detail?: string | Array<{ msg?: string }> }
-    if (typeof body.detail === 'string') return body.detail
-    if (Array.isArray(body.detail)) return body.detail.map((entry) => entry.msg).filter(Boolean).join(', ') || fallback
-  } catch {
-    // Non-JSON failures retain the concise HTTP fallback.
+    const response = await fetch(path, { headers: { Accept: 'application/json', ...init.headers }, ...init })
+    if (!response.ok) throw response
+    return response.status === 204 ? undefined as T : response.json() as Promise<T>
+  } catch (error) {
+    throw await toApiError(error)
   }
-  return fallback
 }
 
 // Use these typed functions from TanStack Query hooks instead of fetching inside display components.
-export function getHealth() { return getJson<HealthResponse>('/api/health') }
-export function getVessels() { return getJson<VesselSummary[]>('/api/vessels') }
-export function getVessel(imo: string) { return getJson<Vessel>(`/api/vessels/${encodeURIComponent(imo)}`) }
-export function getMetrics(imo: string) { return getJson<Metric[]>(`/api/vessels/${encodeURIComponent(imo)}/metrics`) }
+export function getHealth() { return request<HealthResponse>('/api/health') }
+export function getVessels() { return request<VesselSummary[]>('/api/vessels') }
+export function getVessel(imo: string) { return request<Vessel>(`/api/vessels/${encodeURIComponent(imo)}`) }
+export function getMetrics(imo: string) { return request<Metric[]>(`/api/vessels/${encodeURIComponent(imo)}/metrics`) }
 
 // Keep range serialization here so every visualization uses the API's ISO timestamp contract.
 export function getTrajectory(imo: string, metric: string, start: string, end: string) {
   const params = new URLSearchParams({ metric })
   if (start) params.set('start', start)
   if (end) params.set('end', end)
-  return getJson<Trajectory>(`/api/vessels/${encodeURIComponent(imo)}/trajectory?${params}`)
+  return request<Trajectory>(`/api/vessels/${encodeURIComponent(imo)}/trajectory?${params}`)
 }
 
 export function getTelemetry(imo: string, start: string, end: string) {
   const params = new URLSearchParams()
   if (start) params.set('start', start)
   if (end) params.set('end', end)
-  return getJson<Telemetry>(`/api/vessels/${encodeURIComponent(imo)}/telemetry?${params}`)
+  return request<Telemetry>(`/api/vessels/${encodeURIComponent(imo)}/telemetry?${params}`)
 }
 
 export function getSeries(imo: string, metric: string, start: string, end: string, maxPoints = 3_000) {
@@ -87,62 +81,47 @@ export function getSeries(imo: string, metric: string, start: string, end: strin
   if (start) params.set('start', start)
   if (end) params.set('end', end)
   params.set('max_points', String(maxPoints))
-  return getJson<Series>(`/api/vessels/${encodeURIComponent(imo)}/series/${encodeURIComponent(metric)}?${params}`)
+  return request<Series>(`/api/vessels/${encodeURIComponent(imo)}/series/${encodeURIComponent(metric)}?${params}`)
 }
 
 export function getPerformance(imo: string, start: string, end: string) {
   const params = new URLSearchParams()
   if (start) params.set('start', start)
   if (end) params.set('end', end)
-  return getJson<Performance>(`/api/vessels/${encodeURIComponent(imo)}/performance?${params}`)
+  return request<Performance>(`/api/vessels/${encodeURIComponent(imo)}/performance?${params}`)
 }
 
 export function getEnvironment(imo: string, start: string, end: string) {
   const params = new URLSearchParams()
   if (start) params.set('start', start)
   if (end) params.set('end', end)
-  return getJson<Environment>(`/api/vessels/${encodeURIComponent(imo)}/environment?${params}`)
+  return request<Environment>(`/api/vessels/${encodeURIComponent(imo)}/environment?${params}`)
 }
 
-export async function startImport(files: File[]) {
+export function startImport(files: File[]) {
   const body = new FormData()
   files.forEach((file) => body.append('files', file))
-  const response = await fetch('/api/imports', { method: 'POST', body })
-  if (!response.ok) throw new Error(await responseMessage(response))
-  return response.json() as Promise<ImportSession>
+  return request<ImportSession>('/api/imports', { method: 'POST', body })
 }
 
 export function previewImport(sessionId: string) {
-  return getJson<ImportPreview>(`/api/imports/${encodeURIComponent(sessionId)}/preview`)
+  return request<ImportPreview>(`/api/imports/${encodeURIComponent(sessionId)}/preview`)
 }
 
-export async function updateImportMapping(sessionId: string, files: ImportMapping) {
-  const response = await fetch(`/api/imports/${encodeURIComponent(sessionId)}/mapping`, {
+export function updateImportMapping(sessionId: string, files: ImportMapping) {
+  return request<{ session_id: string; status: string; mapping: ImportMapping }>(`/api/imports/${encodeURIComponent(sessionId)}/mapping`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ files }),
   })
-  if (!response.ok) throw new Error(await responseMessage(response))
-  return response.json() as Promise<{ session_id: string; status: string; mapping: ImportMapping }>
 }
 
-export async function validateImport(sessionId: string) {
-  const response = await fetch(`/api/imports/${encodeURIComponent(sessionId)}/validate`, { method: 'POST' })
-  if (!response.ok) throw new Error(await responseMessage(response))
-  return response.json() as Promise<ImportValidation>
-}
+export function validateImport(sessionId: string) { return request<ImportValidation>(`/api/imports/${encodeURIComponent(sessionId)}/validate`, { method: 'POST' }) }
 
-export async function commitImport(sessionId: string, imo: string, name: string, mode: 'CREATE' | 'REPLACE') {
-  const response = await fetch(`/api/imports/${encodeURIComponent(sessionId)}/commit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imo, name: name || null, mode }) })
-  if (!response.ok) throw new Error(await responseMessage(response))
-  return response.json() as Promise<{ imo: string; samples_imported: number }>
-}
+export function commitImport(sessionId: string, imo: string, name: string, mode: 'CREATE' | 'REPLACE') { return request<{ imo: string; samples_imported: number }>(`/api/imports/${encodeURIComponent(sessionId)}/commit`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ imo, name: name || null, mode }) }) }
 
 export function getImportProgress(sessionId: string) {
-  return getJson<ImportProgress>(`/api/imports/${encodeURIComponent(sessionId)}/progress`)
+  return request<ImportProgress>(`/api/imports/${encodeURIComponent(sessionId)}/progress`)
 }
 
-export async function cancelImport(sessionId: string) {
-  const response = await fetch(`/api/imports/${encodeURIComponent(sessionId)}`, { method: 'DELETE' })
-  if (!response.ok) throw new Error(await responseMessage(response))
-}
+export function cancelImport(sessionId: string) { return request<void>(`/api/imports/${encodeURIComponent(sessionId)}`, { method: 'DELETE' }) }

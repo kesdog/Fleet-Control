@@ -68,7 +68,10 @@ def test_rejects_invalid_upload_without_creating_a_session(client: TestClient, s
     response = client.post("/api/imports", files={"files": ("not-csv.txt", "x", "text/plain")})
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "Only .csv files are supported."
+    assert response.json()["detail"] == {
+        "code": "unsupported_import_file",
+        "message": "Only .csv files are supported.",
+    }
     assert not any(settings.imports_directory.iterdir())
 
 
@@ -82,12 +85,47 @@ def test_rejects_unknown_mapping_file(client: TestClient) -> None:
     )
 
     assert mapping.status_code == 422
-    assert "unknown files" in mapping.json()["detail"]
+    assert mapping.json()["detail"]["code"] == "unknown_mapping_file"
 
 
 def test_empty_csv_is_rejected_and_cleaned_up(client: TestClient, settings) -> None:
     response = client.post("/api/imports", files={"files": ("empty.csv", "", "text/csv")})
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "CSV input is empty."
+    assert response.json()["detail"] == {
+        "code": "invalid_csv",
+        "message": "CSV input could not be read.",
+    }
     assert not any(settings.imports_directory.iterdir())
+
+
+def test_validation_failure_retains_uploads_and_successful_commit_cleans_them(
+    client: TestClient, settings
+) -> None:
+    invalid = "Timestamp,Latitude [deg],Longitude [deg],Speed\n2026-03-01T00:15:00,32.5,-79.4,10\n"
+    created = client.post("/api/imports", files={"files": ("gps.csv", invalid, "text/csv")})
+    session_id = created.json()["session_id"]
+    session_directory = settings.imports_directory / session_id
+
+    failed_validation = client.post(f"/api/imports/{session_id}/validate")
+    assert failed_validation.json()["status"] == "FAILED"
+    assert session_directory.is_dir()
+
+    client.delete(f"/api/imports/{session_id}")
+    assert not session_directory.exists()
+
+    created = client.post("/api/imports", files={"files": ("gps.csv", GPS_CSV, "text/csv")})
+    session_id = created.json()["session_id"]
+    session_directory = settings.imports_directory / session_id
+    assert client.post(f"/api/imports/{session_id}/validate").json()["status"] == "VALIDATED"
+    assert client.post(
+        f"/api/imports/{session_id}/commit", json={"imo": "IMO9001", "mode": "CREATE"}
+    ).status_code == 200
+    assert not session_directory.exists()
+
+    audit_log = settings.logs_directory / "import-audit.jsonl"
+    assert audit_log.is_file()
+    audit_events = audit_log.read_text(encoding="utf-8")
+    assert '"event":"validation_failure"' in audit_events
+    assert '"event":"cancelled"' in audit_events
+    assert '"event":"committed"' in audit_events

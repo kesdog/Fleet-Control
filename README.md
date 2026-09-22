@@ -2,9 +2,9 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.18.0
+## Version 0.20.0
 
-This milestone keeps the v0.17.0 environmental enrichment and voyage-performance capabilities while making the final prototype easier to inspect and maintain. v0.18.0 separates dashboard orchestration, map layers, and import-stage presentation, and adds metric-shaded vessel routes with per-vessel legends:
+This milestone consolidates the previously unreleased v0.19.0 work with the v0.20.0 consistency pass. It keeps the v0.18.0 route-shading and workspace-refactor capabilities while adding a read-only, cache-backed report API for AI agent clients and standardizing error handling across the stack. v0.20.0 adds machine-readable agent documentation at `GET /api/agents/docs`, compact multi-vessel reports at `GET /api/agents/report` with a process-wide rate limit, a shared `{code, message}` API error envelope, metadata-only import audit logging with temporary-upload cleanup, a centralized frontend API error converter, a Vitest/Testing Library component-test harness, and real-data integration tests:
 
 - FastAPI application with a health endpoint.
 - SQLite database initialized automatically at startup.
@@ -49,6 +49,10 @@ This milestone keeps the v0.17.0 environmental enrichment and voyage-performance
 - Focused dashboard hooks for fleet selection, telemetry queries, replay, and notifications.
 - Separated raster, route, control, replay, and legend map components with metric-shaded routes.
 - Distinct upload, detection, mapping, validation, and review import-stage components.
+- Read-only `GET /api/agents/docs` agent documentation and `GET /api/agents/report` per-vessel reports backed by the immutable fleet cache, with a process-wide 15-requests-per-minute limit.
+- Frontend component tests for vessel details, import telemetry, and fleet selection, plus an accessible label on the CSV upload input.
+- Standardized `{code, message}` API error envelope for operational and request-validation failures, with a centralized frontend `api/errors.ts` converter and translated error messages.
+- Metadata-only import audit logging plus temporary-upload cleanup after successful commits and cancellations.
 
 ## Run the frontend
 
@@ -97,9 +101,9 @@ The backend permits the planned Vite development origin, `http://localhost:5173`
 
 ```bash
 cd backend
-pytest
-ruff check .
-mypy app
+.venv/bin/pytest
+.venv/bin/ruff check .
+.venv/bin/mypy app
 ```
 
 ```bash
