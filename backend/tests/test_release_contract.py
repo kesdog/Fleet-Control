@@ -6,7 +6,7 @@ def test_openapi_publishes_complete_route_surface(client: TestClient) -> None:
 
     assert response.status_code == 200
     document = response.json()
-    assert document["info"]["version"] == "0.21.0"
+    assert document["info"]["version"] == "0.21.1"
     assert {tag["name"] for tag in document["tags"]} == {
         "agents",
         "health",

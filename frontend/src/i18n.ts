@@ -9,7 +9,7 @@ const saved = localStorage.getItem(storageKey)
 const language = supportedLanguages.includes(saved as SupportedLanguage) ? saved! : 'en'
 
 const en = {
-  app: { name: 'Fleet Control Center', version: 'Import workspace v0.21.0' },
+  app: { name: 'Fleet Control Center', version: 'Import workspace v0.21.1' },
   actions: { import: 'Import vessel', retry: 'Retry connection' },
   settings: { title: 'Workspace settings', open: 'Open settings', close: 'Close settings', replaySpeed: 'Replay speed', replayFrames: 'Replay frames per day', minimumSpacing: 'Minimum spacing: {{minutes}} minutes', mapScale: 'Map scale unit', nauticalMiles: 'Nautical miles', kilometers: 'Kilometers', miles: 'Miles' },
   notifications: { importSuccess: 'Imported {{imo}} with {{count}} telemetry rows.', dismiss: 'Dismiss notification' },
@@ -31,7 +31,7 @@ const en = {
 }
 
 const fr = {
-  app: { name: 'Centre de controle de flotte', version: 'Espace import v0.21.0' },
+  app: { name: 'Centre de controle de flotte', version: 'Espace import v0.21.1' },
   actions: { import: 'Importer un navire', retry: 'Reessayer la connexion' },
   settings: { title: 'Parametres de l espace de travail', open: 'Ouvrir les parametres', close: 'Fermer les parametres', replaySpeed: 'Vitesse de lecture', replayFrames: 'Images de lecture par jour', minimumSpacing: 'Espacement minimal : {{minutes}} minutes', mapScale: 'Unite de l echelle de carte', nauticalMiles: 'Milles nautiques', kilometers: 'Kilometres', miles: 'Miles' },
   notifications: { importSuccess: '{{count}} lignes de telemetrie importees pour {{imo}}.', dismiss: 'Fermer la notification' },

@@ -2,9 +2,9 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.21.0
+## Version 0.21.1
 
-This milestone keeps the v0.20.0 agent-report and error-handling capabilities while hardening the asynchronous enrichment and voyage-performance paths. v0.21.0 adds an import-generation guard that stops a stale enrichment worker from overwriting a vessel replaced by a later import, gap-aware fuel and distance integration that reports observed/unobserved duration and telemetry coverage instead of treating unobserved periods as continuous sailing, an explicit experimental-heuristic model and warning on the wind/wave impact estimate, a configurable 0.1-degree environmental enrichment grid, SQLite foreign-key enforcement, and a documented, non-implemented waypoint-editing proposal:
+This patch release keeps the v0.21.0 enrichment, voyage-performance, and agent-report capabilities and adds a deployable Docker image. A multi-stage `Dockerfile` builds the React frontend and packages it with the FastAPI backend into a single production image, `compose.yaml` runs the full application with a persistent `fleet-data` volume, a runtime-only backend requirements set keeps the image lean, and FastAPI serves the built SPA with history fallback while leaving `/api` routes untouched:
 
 - FastAPI application with a health endpoint.
 - SQLite database initialized automatically at startup.
@@ -55,6 +55,24 @@ This milestone keeps the v0.20.0 agent-report and error-handling capabilities wh
 - Standardized `{code, message}` API error envelope for operational and request-validation failures, with a centralized frontend `api/errors.ts` converter and translated error messages.
 - Metadata-only import audit logging plus temporary-upload cleanup after successful commits and cancellations.
 - A documented, non-implemented waypoint-editing proposal in `docs/waypoint-editing.md`.
+- A single deployable Docker image that bundles the built React frontend with the FastAPI backend and serves it with a persistent `fleet-data` Docker volume.
+
+## Run with Docker
+
+Build the single production image and start the full application:
+
+```bash
+docker compose up --build
+```
+
+Open `http://127.0.0.1:8000`. The container serves the React application and proxies no browser requests: its relative `/api` calls are handled by the bundled FastAPI server. SQLite data, staged imports, and logs persist in the `fleet-data` Docker volume.
+
+To build the image separately, run:
+
+```bash
+docker build -t marine-fleet-control-center .
+docker compose up
+```
 
 ## Run the frontend
 

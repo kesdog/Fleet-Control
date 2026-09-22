@@ -1,9 +1,11 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.agents import router as agents_router
@@ -41,7 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Marine Fleet Control Center",
-        version="0.21.0",
+        version="0.21.1",
         description=(
             "Import normalized vessel telemetry and serve immutable cache-backed fleet data."
         ),
@@ -62,6 +64,24 @@ def create_app() -> FastAPI:
     app.include_router(agents_router, prefix="/api")
     app.include_router(imports_router, prefix="/api")
     app.include_router(vessels_router, prefix="/api")
+
+    static_root = Path("static").resolve()
+
+    @app.get("/{asset_path:path}", include_in_schema=False)
+    async def serve_frontend(asset_path: str) -> FileResponse:
+        """Serve the production SPA without affecting API routes."""
+        if asset_path.startswith("api/") or not static_root.is_dir():
+            raise HTTPException(status_code=404, detail="Not Found")
+
+        asset = (static_root / asset_path).resolve()
+        if asset.is_relative_to(static_root) and asset.is_file():
+            return FileResponse(asset)
+
+        index = static_root / "index.html"
+        if index.is_file():
+            return FileResponse(index)
+        raise HTTPException(status_code=404, detail="Not Found")
+
     return app
 
 

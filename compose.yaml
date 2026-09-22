@@ -1,0 +1,20 @@
+services:
+  app:
+    build:
+      context: .
+    image: marine-fleet-control-center:latest
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: sqlite:///./data/fleet.db
+    volumes:
+      - fleet-data:/app/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "from urllib.request import urlopen; urlopen('http://127.0.0.1:8000/api/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  fleet-data:
