@@ -32,6 +32,7 @@ class PerformanceSample:
 
 @dataclass(frozen=True)
 class VoyagePerformance:
+    """Aggregated route metrics with explicit telemetry-observation coverage."""
     distance_nm: float
     fuel_tonnes: float
     fuel_cost: float
@@ -47,6 +48,9 @@ class VoyagePerformance:
     wind_impact_percent: float | None
     wave_impact_percent: float | None
     weather_impact_percent: float | None
+    observed_duration_seconds: float
+    unobserved_duration_seconds: float
+    coverage_percent: float | None
 
 
 def calculate_current_along_heading(
@@ -152,6 +156,8 @@ def compute_voyage_performance(
     wave_fuel_tonnes = 0.0
     adjusted_fuel_tonnes = 0.0
     total_distance_nm = 0.0
+    observed_duration_seconds = 0.0
+    unobserved_duration_seconds = 0.0
     previous: PerformanceSample | None = None
     previous_rates = (0.0, 0.0, 0.0, 0.0)
     has_wind = False
@@ -186,24 +192,30 @@ def compute_voyage_performance(
 
         if previous is not None:
             elapsed_seconds = (sample.timestamp - previous.timestamp).total_seconds()
-            total_fuel_tonnes += calculate_segment_fuel_tonnes(
-                previous_rates[0], rate_tpd, elapsed_seconds
-            )
-            wind_fuel_tonnes += calculate_segment_fuel_tonnes(
-                previous_rates[1], wind_rate, elapsed_seconds
-            )
-            wave_fuel_tonnes += calculate_segment_fuel_tonnes(
-                previous_rates[2], wave_rate, elapsed_seconds
-            )
-            adjusted_fuel_tonnes += calculate_segment_fuel_tonnes(
-                previous_rates[3], adjusted_rate, elapsed_seconds
-            )
-            total_distance_nm += haversine_nm(
-                previous.latitude_deg,
-                previous.longitude_deg,
-                sample.latitude_deg,
-                sample.longitude_deg,
-            )
+            if elapsed_seconds <= settings.fuel_integration_max_gap_minutes * 60.0:
+                # Only consecutive observations support a continuous-operation estimate.
+                observed_duration_seconds += max(0.0, elapsed_seconds)
+                total_fuel_tonnes += calculate_segment_fuel_tonnes(
+                    previous_rates[0], rate_tpd, elapsed_seconds
+                )
+                wind_fuel_tonnes += calculate_segment_fuel_tonnes(
+                    previous_rates[1], wind_rate, elapsed_seconds
+                )
+                wave_fuel_tonnes += calculate_segment_fuel_tonnes(
+                    previous_rates[2], wave_rate, elapsed_seconds
+                )
+                adjusted_fuel_tonnes += calculate_segment_fuel_tonnes(
+                    previous_rates[3], adjusted_rate, elapsed_seconds
+                )
+                total_distance_nm += haversine_nm(
+                    previous.latitude_deg,
+                    previous.longitude_deg,
+                    sample.latitude_deg,
+                    sample.longitude_deg,
+                )
+            else:
+                # Preserve the gap for API transparency without estimating its operation.
+                unobserved_duration_seconds += elapsed_seconds
         previous = sample
         previous_rates = (rate_tpd, wind_rate, wave_rate, adjusted_rate)
 
@@ -238,6 +250,15 @@ def compute_voyage_performance(
         weather_impact_percent=(
             _impact_percent(adjusted_fuel_tonnes, total_fuel_tonnes)
             if (has_wind or has_wave)
+            else None
+        ),
+        observed_duration_seconds=observed_duration_seconds,
+        unobserved_duration_seconds=unobserved_duration_seconds,
+        coverage_percent=(
+            observed_duration_seconds
+            / (observed_duration_seconds + unobserved_duration_seconds)
+            * 100.0
+            if observed_duration_seconds + unobserved_duration_seconds > 0
             else None
         ),
     )

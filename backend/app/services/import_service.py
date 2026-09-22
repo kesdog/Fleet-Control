@@ -263,7 +263,11 @@ def commit_import_session(
             session.delete(existing_vessel)
             session.flush()
 
-        vessel = Vessel(imo=request.imo, name=request.name)
+        vessel = Vessel(
+            imo=request.imo,
+            name=request.name,
+            enrichment_generation=session_id,
+        )
         session.add(vessel)
         session.flush()
         samples = [
@@ -330,6 +334,8 @@ def commit_import_session(
                 session_factory,
                 session_id,
                 request.imo,
+                vessel.id,
+                vessel.enrichment_generation,
                 normalized.samples,
                 settings,
                 fleet_cache,
@@ -348,10 +354,13 @@ def _enrich_committed_vessel(
     session_factory: sessionmaker[Session],
     session_id: str,
     imo: str,
+    vessel_id: int,
+    enrichment_generation: str,
     normalized_samples: tuple[NormalizedSample, ...],
     settings: Settings,
     fleet_cache: FleetCacheManager,
 ) -> None:
+    """Apply environmental data only while this import still owns the vessel generation."""
     def update_progress(completed_days: int, total_days: int) -> None:
         with session_factory() as progress_session:
             import_session = progress_session.get(ImportSession, session_id)
@@ -371,8 +380,20 @@ def _enrich_committed_vessel(
         for sample in normalized_samples
     }
     with session_factory() as session:
-        vessel = session.scalar(select(Vessel).where(Vessel.imo == imo))
+        vessel = session.scalar(
+            select(Vessel).where(
+                Vessel.id == vessel_id,
+                Vessel.imo == imo,
+                Vessel.enrichment_generation == enrichment_generation,
+            )
+        )
         if vessel is None:
+            # The import committed successfully, but a newer generation now owns its IMO.
+            # Finish the old session rather than leaving clients polling ENRICHING forever.
+            import_session = session.get(ImportSession, session_id)
+            if import_session is not None:
+                import_session.status = ImportStatus.COMMITTED.value
+                session.commit()
             return
         rows = session.execute(
             select(Sample, EnvironmentalSample)

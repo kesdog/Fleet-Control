@@ -35,6 +35,11 @@ def test_performance_endpoint_reports_sog_fallback_without_weather(client: TestC
     assert body["fuel_currency"] == "EUR"
     assert body["distance_nm"] > 0
     assert body["fuel_tonnes"] > 0
+    assert body["observed_duration_seconds"] == 15 * 60
+    assert body["unobserved_duration_seconds"] == 0
+    assert body["coverage_percent"] == 100
+    assert body["weather_impact"]["model"] == "experimental_heuristic"
+    assert "not supplied by AI Universal" in body["weather_impact"]["warning"]
     assert body["weather"]["mean_wave_height_m"] is None
     assert body["weather"]["max_wave_height_m"] is None
 

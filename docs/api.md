@@ -96,13 +96,27 @@ The visualization endpoints accept optional `start`, `end`, and `max_points` par
   "fuel_efficiency_nm_per_tonne": 2.94,
   "fuel_consumption_t_per_100nm": 34.04,
   "fuel_cost_per_nm": 340.38,
+  "observed_duration_seconds": 603900,
+  "unobserved_duration_seconds": 7200,
+  "coverage_percent": 98.82,
   "weather": {
     "mean_wave_height_m": 2.1,
     "max_wave_height_m": 4.7,
     "mean_weather_factor": 1.01
+  },
+  "weather_impact": {
+    "adjusted_fuel_tonnes": 493.2,
+    "adjusted_fuel_cost": 493200.0,
+    "wind_percent": 1.4,
+    "wave_percent": 0.8,
+    "total_percent": 2.2,
+    "model": "experimental_heuristic",
+    "warning": "Experimental project heuristic: wind and wave penalties are not supplied by AI Universal and are not a validated vessel-resistance model."
   }
 }
 ```
+
+`fuel_tonnes` and `distance_nm` exclude telemetry intervals longer than the configured 60-minute maximum. `coverage_percent` is the integrated duration divided by all consecutive durations in the selected range. `weather_impact` is opt-in frontend output; its coefficients are explicitly experimental project assumptions, not an AI Universal supplied formula.
 
 Environmental metrics (`stw`, `wind_speed`, `wave_height`, `wave_period`, `current_speed`, `weather_factor`, `fuel_tpd`, and others) are also available through the standard `/metrics`, `/series/{metric}`, and `/trajectory` endpoints.
 

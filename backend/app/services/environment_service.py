@@ -12,7 +12,6 @@ from app.config import Settings
 logger = logging.getLogger(__name__)
 
 KMH_TO_KNOTS = 0.539956803
-SPATIAL_GRID_DEGREES = 0.25
 
 # Open-Meteo's free tier allows ~600 "locations" (coordinates) per minute per API.
 # Multi-coordinate requests count once per coordinate, so we throttle each endpoint
@@ -121,7 +120,10 @@ def fetch_environment_for_samples(
         timestamp = getattr(sample, "timestamp", None)
         if latitude is None or longitude is None or timestamp is None:
             continue
-        coordinate = (_round_coordinate(latitude), _round_coordinate(longitude))
+        coordinate = (
+            _round_coordinate(latitude, settings.environment_spatial_grid_degrees),
+            _round_coordinate(longitude, settings.environment_spatial_grid_degrees),
+        )
         by_day.setdefault(timestamp.date(), {}).setdefault(coordinate, []).append(sample)
 
     observations: dict[datetime, EnvironmentalObservation] = {}
@@ -161,8 +163,8 @@ def _empty_cell() -> _CellData:
     )
 
 
-def _round_coordinate(value: float) -> float:
-    return round(value / SPATIAL_GRID_DEGREES) * SPATIAL_GRID_DEGREES
+def _round_coordinate(value: float, grid_degrees: float) -> float:
+    return round(value / grid_degrees) * grid_degrees
 
 
 def _fetch_day(

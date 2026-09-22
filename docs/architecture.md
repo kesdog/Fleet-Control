@@ -20,7 +20,7 @@ SQLite is the persistent source of truth. It is appropriate for this prototype b
 - `vessel_metrics`: measured, estimated, and environmental metric definitions.
 - `import_sessions`: temporary staged-import metadata.
 
-The database schema initializes automatically. The current lightweight upgrade adds the `based_on` metadata column without introducing Alembic; a production deployment should replace this with managed migrations.
+The database schema initializes automatically. SQLite foreign-key enforcement is enabled for every connection. The current lightweight upgrades add the `based_on` metadata column and vessel enrichment generation without introducing Alembic; a production deployment should replace this with managed migrations.
 
 ## Import Boundary
 
@@ -30,13 +30,13 @@ CSV files remain temporary until an import session validates successfully. The i
 2. Requires explicit confirmation for ambiguous speed units.
 3. Converts speed to knots.
 4. Merges GPS and motion files by timestamp, never row position.
-5. Enriches each sample with Open-Meteo historical wind, wave, and ocean-current data (grouped by day and a 0.25° grid, matched to the nearest hour). Each vessel day sends exactly one batched weather request and one batched marine request; Open-Meteo counts each coordinate in those batches toward its rate limit, so requests are throttled and retried on a 429 response.
+5. Enriches each sample with Open-Meteo historical wind, wave, and ocean-current data (grouped by day and a 0.1° grid, matched to the nearest hour). This retains substantially more current detail than the previous 0.25° grid while still batching nearby samples. Each vessel day sends exactly one batched weather request and one batched marine request; Open-Meteo counts each coordinate in those batches toward its rate limit, so requests are throttled and retried on a 429 response.
 6. Derives Speed Through Water, RPM, and fuel estimates from SOG plus the current projection.
 7. Writes vessel data, samples, environmental samples, metric definitions, and import status in one SQLite transaction.
 
 Failed commits roll back database changes. A cache update happens only after the transaction succeeds.
 
-Enrichment runs outside the write transaction so provider latency never holds the SQLite lock. A provider failure leaves environmental fields null and STW falls back to SOG; the telemetry import always succeeds. Environmental data is distinguished from vessel telemetry by its own table and its `environmental` metric origin.
+Enrichment runs outside the write transaction so provider latency never holds the SQLite lock. A provider failure leaves environmental fields null and STW falls back to SOG; the telemetry import always succeeds. The worker receives the committed vessel ID and its import-session generation token, and refuses to update if a later replacement now owns the IMO. Environmental data is distinguished from vessel telemetry by its own table and its `environmental` metric origin.
 
 ## Cache Read Model
 
@@ -47,6 +47,8 @@ SQLite remains authoritative. Normal GET routes use the cache and execute no SQL
 ## Missing And Estimated Data
 
 Missing source telemetry is represented by each cache sample's `missing_fields` collection. It is not interpolated or converted into an estimate. Estimated RPM and fuel are separate values with `origin`, `formula`, `based_on`, and `warning` metadata. Environmental metrics carry an `environmental` origin and remain null when Open-Meteo data is unavailable.
+
+Fuel and distance integration only includes consecutive samples at or below the configured 60-minute maximum gap. Larger gaps are reported as unobserved duration and reduce the performance response's coverage percentage rather than being treated as continuous vessel operation.
 
 ## Future Scale Path
 

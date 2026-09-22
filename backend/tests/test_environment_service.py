@@ -3,6 +3,7 @@ from datetime import datetime
 
 import httpx
 import pytest
+from pydantic import ValidationError
 
 from app.config import Settings
 from app.services.environment_service import (
@@ -99,6 +100,20 @@ def test_disabled_enrichment_returns_no_observations() -> None:
     settings = Settings(environment_enrichment_enabled=False)
     samples = (_SampleLike(datetime(2026, 3, 1, 0, 10), 32.5, -79.4),)
     assert fetch_environment_for_samples(samples, settings) == {}
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("environment_spatial_grid_degrees", 0),
+        ("fuel_integration_max_gap_minutes", -1),
+    ],
+)
+def test_environment_and_fuel_interval_settings_require_positive_values(
+    field: str, value: int
+) -> None:
+    with pytest.raises(ValidationError):
+        Settings(**{field: value})
 
 
 def test_provider_failure_degrades_to_null_observation() -> None:

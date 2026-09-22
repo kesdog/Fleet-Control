@@ -43,6 +43,7 @@
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px dashed #dbe3e6;
+  flex-wrap: wrap;
 }
 
 .voyage-performance .impact-badge {
@@ -69,6 +70,14 @@
 .voyage-performance .impact-breakdown {
   color: #687780;
   font: 11px 'Courier New', monospace;
+}
+
+.voyage-performance .impact-warning {
+  flex-basis: 100%;
+  margin: 0;
+  color: #8c5d1e;
+  font-size: 11px;
+  line-height: 1.45;
 }
 
 .voyage-performance-ship {

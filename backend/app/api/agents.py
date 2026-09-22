@@ -250,5 +250,13 @@ def _performance_response(
             wind_percent=performance.wind_impact_percent,
             wave_percent=performance.wave_impact_percent,
             total_percent=performance.weather_impact_percent,
+            model="experimental_heuristic",
+            warning=(
+                "Experimental project heuristic: wind and wave penalties are not supplied "
+                "by AI Universal and are not a validated vessel-resistance model."
+            ),
         ),
+        observed_duration_seconds=performance.observed_duration_seconds,
+        unobserved_duration_seconds=performance.unobserved_duration_seconds,
+        coverage_percent=performance.coverage_percent,
     )

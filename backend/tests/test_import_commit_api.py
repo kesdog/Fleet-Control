@@ -1,8 +1,12 @@
+from datetime import datetime
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import event, select
 
-from app.db.models import Sample, Vessel, VesselMetric
+from app.db.models import ImportSession, Sample, Vessel, VesselMetric
+from app.importers.normalizer import NormalizedSample
+from app.services.import_service import _enrich_committed_vessel
 
 GPS_CSV = (
     "Timestamp,Latitude [deg],Longitude [deg],Speed [km/h],Course [deg]\n"
@@ -112,6 +116,71 @@ def test_existing_vessel_requires_explicit_replace(client: TestClient) -> None:
         vessel = session.scalar(select(Vessel).where(Vessel.imo == "IMO1002"))
         assert vessel is not None
         assert len(list(session.scalars(select(Sample).where(Sample.vessel_id == vessel.id)))) == 1
+
+
+def test_stale_enrichment_cannot_update_a_replaced_vessel(client: TestClient) -> None:
+    first_session = create_and_validate(client)
+    assert client.post(
+        f"/api/imports/{first_session}/commit",
+        json={"imo": "IMO1005", "mode": "CREATE"},
+    ).status_code == 200
+    with client.app.state.session_factory() as session:
+        first_vessel = session.scalar(select(Vessel).where(Vessel.imo == "IMO1005"))
+        assert first_vessel is not None
+        first_vessel_id = first_vessel.id
+
+    replacement_session = create_and_validate(client)
+    assert client.post(
+        f"/api/imports/{replacement_session}/commit",
+        json={"imo": "IMO1005", "mode": "REPLACE"},
+    ).status_code == 200
+    with client.app.state.session_factory() as session:
+        replacement = session.scalar(select(Vessel).where(Vessel.imo == "IMO1005"))
+        assert replacement is not None
+        replacement_generation = replacement.enrichment_generation
+        replacement_sample = session.scalar(
+            select(Sample).where(Sample.vessel_id == replacement.id)
+        )
+        assert replacement_sample is not None
+        replacement_fuel_rate = replacement_sample.estimated_fuel_tpd
+
+    # This payload would materially change the replacement's fuel rate if the worker
+    # found by IMO alone, which exercises the protected write path.
+    stale_sample = NormalizedSample(
+        timestamp=datetime(2026, 3, 1, 0, 15),
+        latitude_deg=32.5,
+        longitude_deg=-79.4,
+        sog_knots=20.0,
+        course_deg=None,
+        heading_deg=None,
+        estimated_rpm=80.0,
+        estimated_fuel_tpd=0.0,
+        metrics={},
+    )
+
+    _enrich_committed_vessel(
+        client.app.state.session_factory,
+        first_session,
+        "IMO1005",
+        first_vessel_id,
+        first_session,
+        (stale_sample,),
+        client.app.state.settings,
+        client.app.state.fleet_cache,
+    )
+
+    with client.app.state.session_factory() as session:
+        replacement = session.scalar(select(Vessel).where(Vessel.imo == "IMO1005"))
+        assert replacement is not None
+        assert replacement.enrichment_generation == replacement_generation
+        replacement_sample = session.scalar(
+            select(Sample).where(Sample.vessel_id == replacement.id)
+        )
+        assert replacement_sample is not None
+        assert replacement_sample.estimated_fuel_tpd == replacement_fuel_rate
+        first_import = session.get(ImportSession, first_session)
+        assert first_import is not None
+        assert first_import.status == "COMMITTED"
 
 
 def test_duplicate_gps_timestamps_fail_validation_and_cannot_commit(client: TestClient) -> None:

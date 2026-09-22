@@ -116,7 +116,11 @@ def _sample(
 
 
 def test_voyage_cost_respects_configured_price() -> None:
-    settings = Settings(fuel_price_per_tonne=500.0, fuel_currency="USD")
+    settings = Settings(
+        fuel_price_per_tonne=500.0,
+        fuel_currency="USD",
+        fuel_integration_max_gap_minutes=24 * 60,
+    )
     start = datetime(2026, 3, 1, 0, 0)
     samples = (
         _sample(start, 0.0, 0.0, 15.0),
@@ -140,6 +144,22 @@ def test_voyage_with_irregular_intervals_integrates_correctly() -> None:
 
     # One hour at 150 t/day equals 6.25 tonnes.
     assert performance.fuel_tonnes == pytest.approx(150.0 / 24.0)
+
+
+def test_voyage_gap_is_excluded_and_reported_as_unobserved() -> None:
+    settings = Settings()
+    start = datetime(2026, 3, 1, 0, 0)
+    samples = (
+        _sample(start, 0.0, 0.0, 15.0),
+        _sample(start + timedelta(minutes=15), 0.0, 0.1, 15.0),
+        _sample(start + timedelta(hours=12), 0.0, 10.0, 15.0),
+    )
+    performance = compute_voyage_performance(settings, samples)
+
+    assert performance.fuel_tonnes == pytest.approx(150.0 / 96.0)
+    assert performance.observed_duration_seconds == pytest.approx(15 * 60)
+    assert performance.unobserved_duration_seconds == pytest.approx(11.75 * 3600)
+    assert performance.coverage_percent == pytest.approx(15 / (15 + 705) * 100)
 
 
 def test_zero_distance_does_not_divide_by_zero() -> None:

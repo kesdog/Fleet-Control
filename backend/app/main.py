@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def create_app() -> FastAPI:
     app = FastAPI(
         title="Marine Fleet Control Center",
-        version="0.20.0",
+        version="0.21.0",
         description=(
             "Import normalized vessel telemetry and serve immutable cache-backed fleet data."
         ),

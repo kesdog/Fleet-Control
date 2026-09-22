@@ -17,6 +17,10 @@ function signedPercent(value: number | null) {
   return `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`
 }
 
+function durationHours(seconds: number) {
+  return `${(seconds / 3600).toLocaleString(undefined, { maximumFractionDigits: 1 })} h`
+}
+
 function impactTone(value: number | null): 'positive' | 'negative' | 'neutral' {
   if (value === null || Math.abs(value) < 0.05) return 'neutral'
   return value > 0 ? 'positive' : 'negative'
@@ -45,10 +49,13 @@ function ShipPerformance({ entry, showWeatherImpact }: { entry: PerformanceEntry
       <div><dt>{t('performance.tPer100nm')}</dt><dd>{formatValue(performance.fuel_consumption_t_per_100nm, 't/100nm')}</dd></div>
       <div><dt>{t('performance.costPerNm')}</dt><dd>{formatValue(performance.fuel_cost_per_nm, `${performance.fuel_currency}/nm`)}</dd></div>
       <div><dt>{t('performance.maxWaveHeight')}</dt><dd>{formatValue(performance.weather.max_wave_height_m, 'm')}</dd></div>
+      <div><dt>{t('performance.coverage')}</dt><dd>{signedPercent(performance.coverage_percent)}</dd></div>
+      <div><dt>{t('performance.unobserved')}</dt><dd>{durationHours(performance.unobserved_duration_seconds)}</dd></div>
     </dl>
     {showWeatherImpact ? <div className="ship-weather-impact">
       <span className={`impact-badge is-${impactTone(impact.total_percent)}`}>{t('performance.weatherImpact')}: {signedPercent(impact.total_percent)}</span>
       <span className="impact-breakdown">{t('performance.wind')} {signedPercent(impact.wind_percent)} · {t('performance.waves')} {signedPercent(impact.wave_percent)}</span>
+      <p className="impact-warning">{impact.warning}</p>
     </div> : null}
   </div>
 }

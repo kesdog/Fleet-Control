@@ -2,9 +2,9 @@
 
 A progressive fleet-control prototype for importing vessel telemetry, storing normalized data in SQLite, and serving it through an API.
 
-## Version 0.20.0
+## Version 0.21.0
 
-This milestone consolidates the previously unreleased v0.19.0 work with the v0.20.0 consistency pass. It keeps the v0.18.0 route-shading and workspace-refactor capabilities while adding a read-only, cache-backed report API for AI agent clients and standardizing error handling across the stack. v0.20.0 adds machine-readable agent documentation at `GET /api/agents/docs`, compact multi-vessel reports at `GET /api/agents/report` with a process-wide rate limit, a shared `{code, message}` API error envelope, metadata-only import audit logging with temporary-upload cleanup, a centralized frontend API error converter, a Vitest/Testing Library component-test harness, and real-data integration tests:
+This milestone keeps the v0.20.0 agent-report and error-handling capabilities while hardening the asynchronous enrichment and voyage-performance paths. v0.21.0 adds an import-generation guard that stops a stale enrichment worker from overwriting a vessel replaced by a later import, gap-aware fuel and distance integration that reports observed/unobserved duration and telemetry coverage instead of treating unobserved periods as continuous sailing, an explicit experimental-heuristic model and warning on the wind/wave impact estimate, a configurable 0.1-degree environmental enrichment grid, SQLite foreign-key enforcement, and a documented, non-implemented waypoint-editing proposal:
 
 - FastAPI application with a health endpoint.
 - SQLite database initialized automatically at startup.
@@ -44,6 +44,7 @@ This milestone consolidates the previously unreleased v0.19.0 work with the v0.2
 - Current-corrected Speed Through Water (`SOG − current along heading`) with an explicit `sog_fallback` provenance when current data is unavailable.
 - STW-aware RPM (`4 × STW`) and fuel rate (`150 × (STW / 15)³ tonnes/day`) calculations moved into `performance_service.py`.
 - Voyage fuel, cost, distance, and efficiency aggregation via `GET /api/vessels/{imo}/performance`.
+- Gap-aware fuel integration with observed/unobserved duration and coverage reporting.
 - Per-sample environmental series via `GET /api/vessels/{imo}/environment`.
 - A compact Voyage Performance panel and environmental metrics in the telemetry-frame table.
 - Focused dashboard hooks for fleet selection, telemetry queries, replay, and notifications.
@@ -53,6 +54,7 @@ This milestone consolidates the previously unreleased v0.19.0 work with the v0.2
 - Frontend component tests for vessel details, import telemetry, and fleet selection, plus an accessible label on the CSV upload input.
 - Standardized `{code, message}` API error envelope for operational and request-validation failures, with a centralized frontend `api/errors.ts` converter and translated error messages.
 - Metadata-only import audit logging plus temporary-upload cleanup after successful commits and cancellations.
+- A documented, non-implemented waypoint-editing proposal in `docs/waypoint-editing.md`.
 
 ## Run the frontend
 
@@ -135,7 +137,7 @@ The cache-backed read API provides `GET /api/vessels`, `GET /api/vessels/{imo}`,
 
 Visualization clients can use `GET /api/vessels/{imo}/trajectory` and `GET /api/vessels/{imo}/series/{metric}`. Both accept `start`, `end`, and optional `max_points` parameters. Trajectories split automatically at International Date Line crossings, while series and trajectory downsampling deterministically preserve first and last points.
 
-Environmental enrichment uses `GET /api/vessels/{imo}/environment` for per-sample wind, wave, and current values and `GET /api/vessels/{imo}/performance` for aggregated voyage distance, fuel, cost, and efficiency. Enrichment is fetched from Open-Meteo at import commit time and never fails the import: when the provider is unavailable, environmental fields stay null and fuel falls back to the SOG-based estimate. Configure the endpoints and fuel assumptions through environment variables:
+Environmental enrichment uses `GET /api/vessels/{imo}/environment` for per-sample wind, wave, and current values and `GET /api/vessels/{imo}/performance` for aggregated voyage distance, fuel, cost, efficiency, and telemetry coverage. Enrichment is fetched from Open-Meteo at import commit time and never fails the import: when the provider is unavailable, environmental fields stay null and fuel falls back to the SOG-based estimate. A 0.1-degree batching grid retains useful ocean-current resolution while controlling request volume. Configure the endpoints and fuel assumptions through environment variables:
 
 ```bash
 OPEN_METEO_WEATHER_URL=https://archive-api.open-meteo.com/v1/archive
@@ -144,6 +146,8 @@ FUEL_REFERENCE_SPEED_KNOTS=15
 FUEL_REFERENCE_RATE_TPD=150
 FUEL_PRICE_PER_TONNE=1000
 FUEL_CURRENCY=EUR
+ENVIRONMENT_SPATIAL_GRID_DEGREES=0.1
+FUEL_INTEGRATION_MAX_GAP_MINUTES=60
 ```
 
 ## Documentation

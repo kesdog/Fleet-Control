@@ -15,6 +15,8 @@ class WeatherImpactResponse(BaseModel):
     wind_percent: float | None
     wave_percent: float | None
     total_percent: float | None
+    model: str
+    warning: str
 
 
 class PerformanceResponse(BaseModel):
@@ -30,6 +32,9 @@ class PerformanceResponse(BaseModel):
     fuel_cost_per_nm: float | None
     weather: WeatherSummaryResponse
     weather_impact: WeatherImpactResponse
+    observed_duration_seconds: float
+    unobserved_duration_seconds: float
+    coverage_percent: float | None
 
 
 class EnvironmentPointResponse(BaseModel):

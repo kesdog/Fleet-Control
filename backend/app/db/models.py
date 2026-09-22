@@ -25,6 +25,8 @@ class Vessel(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     imo: Mapped[str] = mapped_column(String(32), unique=True, index=True)
     name: Mapped[str | None] = mapped_column(String(255))
+    # Identifies the import that currently owns this replaceable vessel record.
+    enrichment_generation: Mapped[str | None] = mapped_column(String(36))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()

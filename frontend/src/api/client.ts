@@ -32,8 +32,8 @@ export type TelemetryRecord = { timestamp: string; latitude_deg: number; longitu
 export type Telemetry = { imo: string; start: string | null; end: string | null; records: TelemetryRecord[] }
 
 export type WeatherSummary = { mean_wave_height_m: number | null; max_wave_height_m: number | null; mean_weather_factor: number | null }
-export type WeatherImpact = { adjusted_fuel_tonnes: number; adjusted_fuel_cost: number; wind_percent: number | null; wave_percent: number | null; total_percent: number | null }
-export type Performance = { imo: string; start: string | null; end: string | null; distance_nm: number; fuel_tonnes: number; fuel_cost: number; fuel_currency: string; fuel_efficiency_nm_per_tonne: number | null; fuel_consumption_t_per_100nm: number | null; fuel_cost_per_nm: number | null; weather: WeatherSummary; weather_impact: WeatherImpact }
+export type WeatherImpact = { adjusted_fuel_tonnes: number; adjusted_fuel_cost: number; wind_percent: number | null; wave_percent: number | null; total_percent: number | null; model: string; warning: string }
+export type Performance = { imo: string; start: string | null; end: string | null; distance_nm: number; fuel_tonnes: number; fuel_cost: number; fuel_currency: string; fuel_efficiency_nm_per_tonne: number | null; fuel_consumption_t_per_100nm: number | null; fuel_cost_per_nm: number | null; weather: WeatherSummary; weather_impact: WeatherImpact; observed_duration_seconds: number; unobserved_duration_seconds: number; coverage_percent: number | null }
 export type EnvironmentPoint = { timestamp: string; wind_speed_knots: number | null; wind_direction_deg: number | null; wave_height_m: number | null; wave_direction_deg: number | null; wave_period_s: number | null; current_speed_knots: number | null; current_direction_deg: number | null; weather_factor: number | null; missing: boolean }
 export type Environment = { imo: string; start: string | null; end: string | null; records: EnvironmentPoint[] }
 export type ImportSession = { session_id: string; status: string; files: Array<{ filename: string; headers: string[]; delimiter: string; row_count: number; warnings: string[] }> }

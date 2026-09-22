@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -24,6 +25,11 @@ class Settings(BaseSettings):
 
     # Enrichment can be disabled for offline imports and deterministic tests.
     environment_enrichment_enabled: bool = True
+    environment_spatial_grid_degrees: float = Field(default=0.1, gt=0)
+
+    # Ignore intervals wider than the nominal telemetry cadence. This prevents
+    # estimates from treating an unobserved operational period as continuous sailing.
+    fuel_integration_max_gap_minutes: float = Field(default=60.0, gt=0)
 
     # Wind/wave fuel-impact estimate. A headwind or head sea adds resistance and
     # increases fuel; a following wind or sea reduces it. These are crude linear
